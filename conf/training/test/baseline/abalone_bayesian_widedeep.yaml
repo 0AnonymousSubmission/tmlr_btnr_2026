@@ -1,0 +1,32 @@
+# @package _global_
+# Auto-generated test config for baseline BayesianWideDeep on abalone
+# Best config from ablation: mlp_hidden_dims=[128, 64], n_samples=10
+
+defaults:
+  - /training/test/_base_uncertainty
+
+# Baseline-specific settings
+training:
+  n_epochs: 200
+  batch_size: 256
+
+method:
+  name: baseline
+  bond_prior_alpha: 0
+  warmup_epochs: 0
+
+dataset:
+  added_bias: false
+
+model:
+  mlp_hidden_dims: [128, 64]
+  n_samples: 10
+
+output:
+  save_models: false
+  results_dir: tests_uncertainty/baseline/${dataset.name}/${model.name}/mlp_hidden_dims[128, 64]_n_samples10
+
+hydra:
+  sweep:
+    dir: tests_uncertainty_runs/baseline/${dataset.name}/${model.name}
+    subdir: mlp_hidden_dims[128, 64]_n_samples10/seed${seed}

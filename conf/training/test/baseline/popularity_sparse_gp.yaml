@@ -1,0 +1,32 @@
+# @package _global_
+# Auto-generated test config for baseline SparseGP on popularity
+# Best config from ablation: n_inducing=100, kernel_type=matern
+
+defaults:
+  - /training/test/_base_uncertainty
+
+# Baseline-specific settings
+training:
+  n_epochs: 200
+  batch_size: 256
+
+method:
+  name: baseline
+  bond_prior_alpha: 0
+  warmup_epochs: 0
+
+dataset:
+  added_bias: false
+
+model:
+  n_inducing: 100
+  kernel_type: "matern"
+
+output:
+  save_models: false
+  results_dir: tests_uncertainty/baseline/${dataset.name}/${model.name}/kernel_typematern_n_inducing100
+
+hydra:
+  sweep:
+    dir: tests_uncertainty_runs/baseline/${dataset.name}/${model.name}
+    subdir: kernel_typematern_n_inducing100/seed${seed}

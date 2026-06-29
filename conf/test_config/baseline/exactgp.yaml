@@ -1,0 +1,28 @@
+concrete:
+  _meta:
+    mean_val_quality: 0.803036
+    n_seeds: 5
+    std_val_quality: 0.0
+  kernel_type: matern
+  use_ard: true
+energy_efficiency:
+  _meta:
+    mean_val_quality: 0.951496
+    n_seeds: 5
+    std_val_quality: 0.0
+  kernel_type: matern
+  use_ard: true
+realstate:
+  _meta:
+    mean_val_quality: 0.748878
+    n_seeds: 5
+    std_val_quality: 0.0
+  kernel_type: matern
+  use_ard: false
+student_perf:
+  _meta:
+    mean_val_quality: -0.009188
+    n_seeds: 5
+    std_val_quality: 0.0
+  kernel_type: matern
+  use_ard: true

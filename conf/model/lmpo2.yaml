@@ -1,0 +1,8 @@
+# @package _global_
+defaults:
+  - _base
+
+model:
+  name: LMPO2
+  reduction_factor: 1
+  mpo_bond_dim: 1

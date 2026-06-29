@@ -1,0 +1,15 @@
+# @package _global_
+training:
+  mode: gridsearch
+  n_epochs: 100
+  batch_size: 512
+  patience: 50
+  min_delta: 0.0001
+  val_split: 0.15
+  test_split: 0.15
+
+hydra:
+  sweeper:
+    params:
+      seed: 42,7,123,256,999
+      model.L: 3,4

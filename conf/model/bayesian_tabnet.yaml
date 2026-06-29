@@ -1,0 +1,20 @@
+# @package _global_
+model:
+  name: BayesianTabNet
+  n_d: 8
+  n_a: 8
+  n_steps: 3
+  gamma: 1.3
+  n_independent: 2
+  n_shared: 2
+  lambda_sparse: 0.001
+  momentum: 0.02
+  n_epochs: 200
+  batch_size: 256
+  virtual_batch_size: 128
+  lr: 0.02
+  patience: 15
+  n_ensemble: 5
+  L: null
+  bond_dim: null
+  init_strength: null

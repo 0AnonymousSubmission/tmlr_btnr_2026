@@ -1,0 +1,32 @@
+# @package _global_
+# Auto-generated test config for baseline BdeMile on abalone
+# Best config from ablation: hidden_layers=[16, 16], n_members=8
+
+defaults:
+  - /training/test/_base_uncertainty
+
+# Baseline-specific settings
+training:
+  n_epochs: 200
+  batch_size: 256
+
+method:
+  name: baseline
+  bond_prior_alpha: 0
+  warmup_epochs: 0
+
+dataset:
+  added_bias: false
+
+model:
+  hidden_layers: [16, 16]
+  n_members: 8
+
+output:
+  save_models: false
+  results_dir: tests_uncertainty/baseline/${dataset.name}/${model.name}/hidden_layers[16, 16]_n_members8
+
+hydra:
+  sweep:
+    dir: tests_uncertainty_runs/baseline/${dataset.name}/${model.name}
+    subdir: hidden_layers[16, 16]_n_members8/seed${seed}

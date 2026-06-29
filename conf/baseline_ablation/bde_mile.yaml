@@ -1,0 +1,16 @@
+# @package _global_
+defaults:
+  - _base
+
+output:
+  results_dir: outputs/baseline/${dataset.name}/${model.name}/hidden${model.hidden_layers}_members${model.n_members}
+
+hydra:
+  sweep:
+    dir: runs/baseline/${dataset.name}/${model.name}
+    subdir: hidden${model.hidden_layers}_members${model.n_members}/seed${seed}
+  sweeper:
+    params:
+      model: bde_mile
+      "model.hidden_layers": "[16,16],[32,32]"
+      model.n_members: 4,8

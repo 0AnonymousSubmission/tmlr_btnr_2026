@@ -1,0 +1,17 @@
+# @package _global_
+defaults:
+  - _base
+
+output:
+  results_dir: outputs/baseline/${dataset.name}/${model.name}/inducing${model.n_inducing}_kernel${model.kernel_type}
+
+hydra:
+  sweep:
+    dir: runs/baseline/${dataset.name}/${model.name}
+    subdir: inducing${model.n_inducing}_kernel${model.kernel_type}/seed${seed}
+  sweeper:
+    params:
+      model: sparse_gp
+      model.n_inducing: 50,100
+      model.kernel_type: rbf,matern
+      dataset: abalone,obesity,bike,appliances,ai4i,seoulBike

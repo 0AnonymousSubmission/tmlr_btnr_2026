@@ -1,0 +1,18 @@
+defaults:
+  - model: mpo2
+  - method: btn
+  - dataset: concrete
+  - training: gridsearch
+  - tracker: file
+  - optional slurm: null
+  - optional anonymouscluster: null
+  - optional baseline_ablation: null
+  - _self_
+
+seed: 42
+skip_completed: true
+device: auto
+
+hydra:
+  job:
+    chdir: false

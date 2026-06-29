@@ -1,0 +1,80 @@
+abalone:
+  L: 3
+  _meta:
+    mean_val_quality: 0.531096
+    n_seeds: 15
+    std_val_quality: 0.006619
+  bond_prior_alpha: 1.0
+  init_strength: 0.01
+ai4i:
+  L: 3
+  _meta:
+    mean_val_quality: 0.347268
+    n_seeds: 15
+    std_val_quality: 0.00409
+  bond_prior_alpha: 1.0
+  init_strength: 0.01
+appliances:
+  L: 3
+  _meta:
+    mean_val_quality: 0.33633
+    n_seeds: 12
+    std_val_quality: 0.011253
+  bond_prior_alpha: 1.0
+  init_strength: 0.01
+bike:
+  L: 4
+  _meta:
+    mean_val_quality: 0.67092
+    n_seeds: 15
+    std_val_quality: 0.001019
+  bond_prior_alpha: 1.0
+  init_strength: 0.01
+concrete:
+  L: 4
+  _meta:
+    mean_val_quality: 0.92005
+    n_seeds: 15
+    std_val_quality: 0.007248
+  bond_prior_alpha: 1.0
+  init_strength: 0.01
+energy_efficiency:
+  L: 4
+  _meta:
+    mean_val_quality: 0.997794
+    n_seeds: 15
+    std_val_quality: 0.000125
+  bond_prior_alpha: 1.0
+  init_strength: 0.01
+obesity:
+  L: 3
+  _meta:
+    mean_val_quality: 0.663496
+    n_seeds: 11
+    std_val_quality: 0.014732
+  bond_prior_alpha: 5.0
+  init_strength: 0.1
+realstate:
+  L: 4
+  _meta:
+    mean_val_quality: 0.55509
+    n_seeds: 15
+    std_val_quality: 0.023355
+  bond_prior_alpha: 1.0
+  init_strength: 0.01
+seoulBike:
+  L: 3
+  _meta:
+    mean_val_quality: 0.449821
+    n_seeds: 15
+    std_val_quality: 0.104485
+  bond_prior_alpha: 5.0
+  init_strength: 0.1
+student_perf:
+  L: 3
+  _meta:
+    mean_val_quality: 0.120651
+    n_seeds: 11
+    std_val_quality: 0.027229
+  bond_prior_alpha: 5.0
+  init_strength: 0.1

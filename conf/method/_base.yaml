@@ -1,0 +1,19 @@
+# @package _global_
+method:
+  name: ???
+  bond_prior_alpha: 5.0
+  warmup_epochs: 5
+
+experiment_name: ${method.name}_${dataset.name}_${model.name}_L${model.L}_d${model.bond_dim}
+
+output:
+  results_dir: outputs/${method.name}/${dataset.name}/${model.name}_L${model.L}_d${model.bond_dim}/prior${method.bond_prior_alpha}_init${model.init_strength}
+
+hydra:
+  run:
+    dir: runs/${method.name}_${dataset.name}_${model.name}_${now:%Y-%m-%d_%H-%M-%S}
+  sweep:
+    dir: runs/${method.name}/${dataset.name}/${model.name}_L${model.L}_d${model.bond_dim}/prior${method.bond_prior_alpha}_init${model.init_strength}
+    subdir: seed${seed}
+  job:
+    chdir: false

@@ -1,0 +1,10 @@
+# @package _global_
+defaults:
+  - _base
+
+method:
+  name: ALS
+  decay: 0.25
+
+dataset:
+  added_bias: true

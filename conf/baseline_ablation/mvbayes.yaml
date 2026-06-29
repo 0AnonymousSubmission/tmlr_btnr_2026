@@ -1,0 +1,16 @@
+# @package _global_
+defaults:
+  - _base
+
+output:
+  results_dir: outputs/baseline/${dataset.name}/${model.name}/maxInt${model.maxInt}_maxBasis${model.maxBasis}
+
+hydra:
+  sweep:
+    dir: runs/baseline/${dataset.name}/${model.name}
+    subdir: maxInt${model.maxInt}_maxBasis${model.maxBasis}/seed${seed}
+  sweeper:
+    params:
+      model: mvbayes
+      model.maxInt: 2,3
+      model.maxBasis: 30,50

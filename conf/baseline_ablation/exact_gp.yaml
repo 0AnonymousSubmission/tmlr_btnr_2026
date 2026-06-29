@@ -1,0 +1,17 @@
+# @package _global_
+defaults:
+  - _base
+
+output:
+  results_dir: outputs/baseline/${dataset.name}/${model.name}/kernel${model.kernel_type}_ard${model.use_ard}
+
+hydra:
+  sweep:
+    dir: runs/baseline/${dataset.name}/${model.name}
+    subdir: kernel${model.kernel_type}_ard${model.use_ard}/seed${seed}
+  sweeper:
+    params:
+      model: exact_gp
+      model.kernel_type: rbf,matern
+      model.use_ard: true,false
+      dataset: concrete,energy_efficiency,realstate,student_perf

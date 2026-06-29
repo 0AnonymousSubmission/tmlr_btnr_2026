@@ -1,0 +1,33 @@
+# @package _global_
+# Shared test configuration with uncertainty metrics enabled
+# NOTE: We don't inherit from gridsearch to avoid its model.L sweep.
+# Test configs set the best L value directly from ablation results.
+
+training:
+  mode: gridsearch
+  n_epochs: 100
+  batch_size: 512
+  patience: 50
+  min_delta: 0.0001
+  val_split: 0.15
+  test_split: 0.15
+
+uncertainty:
+  enabled: true
+  confidence: 0.95
+  keep_curves: true
+  outlier:
+    enabled: true
+    fraction: 0.1
+    scale: 5.0
+
+output:
+  results_dir: tests_uncertainty/${method.name}/${dataset.name}/${model.name}_L${model.L}_d${model.bond_dim}/prior${method.bond_prior_alpha}_init${model.init_strength}
+
+hydra:
+  sweeper:
+    params:
+      seed: 923,2143,2415,3094,3176,6758,7994,9086,9153,9958
+  sweep:
+    dir: tests_uncertainty_runs/${method.name}/${dataset.name}/${model.name}_L${model.L}_d${model.bond_dim}/prior${method.bond_prior_alpha}_init${model.init_strength}
+    subdir: seed${seed}

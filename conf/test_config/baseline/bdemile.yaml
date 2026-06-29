@@ -1,0 +1,90 @@
+abalone:
+  _meta:
+    mean_val_quality: 0.604888
+    n_seeds: 5
+    std_val_quality: 0.008672
+  hidden_layers:
+  - 16
+  - 16
+  n_members: 8
+ai4i:
+  _meta:
+    mean_val_quality: 0.042725
+    n_seeds: 5
+    std_val_quality: 0.018942
+  hidden_layers:
+  - 16
+  - 16
+  n_members: 8
+appliances:
+  _meta:
+    mean_val_quality: 0.277981
+    n_seeds: 5
+    std_val_quality: 0.010652
+  hidden_layers:
+  - 32
+  - 32
+  n_members: 8
+bike:
+  _meta:
+    mean_val_quality: 0.942371
+    n_seeds: 5
+    std_val_quality: 0.001877
+  hidden_layers:
+  - 32
+  - 32
+  n_members: 8
+concrete:
+  _meta:
+    mean_val_quality: 0.898438
+    n_seeds: 5
+    std_val_quality: 0.01086
+  hidden_layers:
+  - 16
+  - 16
+  n_members: 8
+energy_efficiency:
+  _meta:
+    mean_val_quality: 0.997958
+    n_seeds: 5
+    std_val_quality: 0.000112
+  hidden_layers:
+  - 16
+  - 16
+  n_members: 8
+obesity:
+  _meta:
+    mean_val_quality: 0.861982
+    n_seeds: 5
+    std_val_quality: 0.022988
+  hidden_layers:
+  - 32
+  - 32
+  n_members: 8
+realstate:
+  _meta:
+    mean_val_quality: 0.83609
+    n_seeds: 5
+    std_val_quality: 0.004073
+  hidden_layers:
+  - 16
+  - 16
+  n_members: 8
+seoulBike:
+  _meta:
+    mean_val_quality: 0.795603
+    n_seeds: 5
+    std_val_quality: 0.004403
+  hidden_layers:
+  - 32
+  - 32
+  n_members: 4
+student_perf:
+  _meta:
+    mean_val_quality: 0.126049
+    n_seeds: 5
+    std_val_quality: 0.032714
+  hidden_layers:
+  - 16
+  - 16
+  n_members: 8

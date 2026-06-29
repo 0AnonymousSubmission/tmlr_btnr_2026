@@ -1,0 +1,18 @@
+# @package _global_
+model:
+  name: BayesianWideDeep
+  mlp_hidden_dims: [128, 64]
+  prior_sigma_1: 1.0
+  prior_sigma_2: 0.002
+  prior_pi: 0.8
+  posterior_mu_init: 0.0
+  posterior_rho_init: -7.0
+  n_epochs: 100
+  batch_size: 64
+  lr: 0.01
+  n_samples: 20
+  patience: 20
+  track_metrics: true
+  L: null
+  bond_dim: null
+  init_strength: null

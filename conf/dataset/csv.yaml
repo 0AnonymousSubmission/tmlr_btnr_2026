@@ -1,0 +1,18 @@
+# @package _global_
+defaults:
+  - _base
+
+dataset:
+  name: csv
+  task: regression
+  csv_path: ???
+
+output:
+  results_dir: outputs/${dataset.name}/${method.name}/${model.name}_L${model.L}_d${model.bond_dim}/prior${method.bond_prior_alpha}_init${model.init_strength}
+
+hydra:
+  run:
+    dir: runs/${dataset.name}_${method.name}_${model.name}_${now:%Y-%m-%d_%H-%M-%S}
+  sweep:
+    dir: runs/${dataset.name}/${method.name}/${model.name}_L${model.L}_d${model.bond_dim}/prior${method.bond_prior_alpha}_init${model.init_strength}
+    subdir: seed${seed}

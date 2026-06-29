@@ -1,0 +1,7 @@
+# @package _global_
+defaults:
+  - _base
+  - size/medium
+
+dataset:
+  name: student_perf

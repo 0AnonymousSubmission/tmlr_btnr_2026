@@ -1,0 +1,15 @@
+# @package _global_
+defaults:
+  - gridsearch
+
+method:
+  bond_prior_alpha: 1.0
+  decay: 0.25
+
+model:
+  init_strength: 0.01
+
+hydra:
+  sweeper:
+    params:
+      model.bond_dim: 18, 32, 64

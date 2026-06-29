@@ -1,0 +1,9 @@
+# @package _global_
+defaults:
+  - gridsearch
+
+method:
+  bond_prior_alpha: 5.0
+
+model:
+  init_strength: 0.1

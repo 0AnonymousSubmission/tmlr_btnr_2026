@@ -1,0 +1,16 @@
+# @package _global_
+defaults:
+  - _base
+
+output:
+  results_dir: outputs/baseline/${dataset.name}/${model.name}/hidden${model.n_hidden_units}_samples${model.n_samples}
+
+hydra:
+  sweep:
+    dir: runs/baseline/${dataset.name}/${model.name}
+    subdir: hidden${model.n_hidden_units}_samples${model.n_samples}/seed${seed}
+  sweeper:
+    params:
+      model: horseshoe_bnn
+      model.n_hidden_units: 32,64
+      model.n_samples: 5,10

@@ -1,0 +1,29 @@
+# @package _global_
+training:
+  mode: gridsearch
+  n_epochs: 200
+  batch_size: 256
+  patience: 50
+  min_delta: 0.0001
+  val_split: 0.15
+  test_split: 0.15
+
+model:
+  L: 3
+  
+method:
+  name: baseline
+  bond_prior_alpha: 0
+  warmup_epochs: 0
+
+dataset:
+  added_bias: false
+
+output:
+  save_models: false
+
+hydra:
+  sweeper:
+    params:
+      seed: 42,7,123,256,999
+      dataset: concrete,abalone,energy_efficiency,realstate,student_perf,obesity,bike,appliances,ai4i,seoulBike

@@ -1,0 +1,10 @@
+# @package _global_
+model:
+  name: ExactGP
+  kernel_type: rbf
+  use_ard: true
+  n_epochs: 100
+  lr: 0.1
+  L: null
+  bond_dim: null
+  init_strength: null

@@ -1,0 +1,21 @@
+# @package _global_
+method:
+  name: baseline
+  bond_prior_alpha: 0
+  warmup_epochs: 0
+
+experiment_name: ${method.name}_${dataset.name}_${model.name}
+
+output:
+  results_dir: outputs/${method.name}/${dataset.name}/${model.name}
+  save_models: false
+
+hydra:
+  run:
+    dir: runs/${method.name}_${dataset.name}_${model.name}_${now:%Y-%m-%d_%H-%M-%S}
+  sweep:
+    dir: runs/${method.name}/${dataset.name}/${model.name}
+    subdir: seed${seed}
+
+dataset:
+  added_bias: false

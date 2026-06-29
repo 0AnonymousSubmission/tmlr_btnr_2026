@@ -1,0 +1,49 @@
+abalone:
+  _meta:
+    mean_val_quality: 0.572184
+    n_seeds: 5
+    std_val_quality: 0.002203
+  kernel_type: matern
+  n_inducing: 100
+ai4i:
+  _meta:
+    mean_val_quality: 0.463952
+    n_seeds: 5
+    std_val_quality: 0.0039
+  kernel_type: matern
+  n_inducing: 100
+appliances:
+  _meta:
+    mean_val_quality: 0.183763
+    n_seeds: 5
+    std_val_quality: 0.00188
+  kernel_type: matern
+  n_inducing: 100
+bike:
+  _meta:
+    mean_val_quality: 0.823625
+    n_seeds: 5
+    std_val_quality: 0.013404
+  kernel_type: matern
+  n_inducing: 100
+obesity:
+  _meta:
+    mean_val_quality: 0.876438
+    n_seeds: 5
+    std_val_quality: 0.001564
+  kernel_type: rbf
+  n_inducing: 100
+popularity:
+  _meta:
+    mean_val_quality: 0.008768
+    n_seeds: 5
+    std_val_quality: 0.000837
+  kernel_type: matern
+  n_inducing: 100
+seoulBike:
+  _meta:
+    mean_val_quality: 0.326202
+    n_seeds: 5
+    std_val_quality: 0.00468
+  kernel_type: rbf
+  n_inducing: 100

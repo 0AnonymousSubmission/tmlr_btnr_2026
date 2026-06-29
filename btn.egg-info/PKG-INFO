@@ -1,0 +1,26 @@
+Metadata-Version: 2.4
+Name: btn
+Version: 0.1.0
+Requires-Dist: ucimlrepo==0.0.7
+Requires-Dist: quimb>=1.11.2
+Requires-Dist: torch>=2.9.1
+Requires-Dist: numpy>=2.3.5
+Requires-Dist: numba>=0.63.1
+Requires-Dist: scikit-learn>=1.7.2
+Requires-Dist: scipy>=1.16.3
+Requires-Dist: cotengra>=0.7.5
+Requires-Dist: autoray>=0.8.0
+Requires-Dist: jax>=0.8.2
+Requires-Dist: tqdm>=4.67.1
+Requires-Dist: hydra-core
+Requires-Dist: omegaconf
+Requires-Dist: gpytorch>=1.11
+Requires-Dist: sklearn-contrib-bde>=1.0.0
+Requires-Dist: pytorch-tabnet>=4.1.0
+Requires-Dist: horseshoe-bnn @ git+https://github.com/microsoft/horseshoe-bnn.git
+Requires-Dist: pybass-emu
+Requires-Dist: pytorch-widedeep>=1.0.0
+Requires-Dist: ipdb
+Requires-Dist: tensorboardX
+Requires-Dist: matplotlib
+Requires-Dist: torchvision

@@ -1,0 +1,6 @@
+# @package _global_
+dataset:
+  name: ???
+  task: regression
+  cap: 50
+  csv_path: null

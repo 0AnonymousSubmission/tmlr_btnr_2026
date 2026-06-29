@@ -1,0 +1,19 @@
+# @package _global_
+dataset:
+  size: small
+  batch_size: 128
+
+slurm:
+  partition: anonymouscluster
+  time: "8:00:00"
+  mem: "2gb"
+  gpu_arch: Ampere
+  cpus: 1
+  gpu: 1
+
+anonymouscluster:
+  queue: gpuv100
+  time: "8:00"
+  mem: "500MB"
+  cpus: 4
+  gpu: 1

@@ -1,0 +1,17 @@
+# @package _global_
+defaults:
+  - _base
+
+method:
+  name: BTN
+  trim_every: 6
+  trimming_threshold: 0.1
+  trim_method: relevance
+  soft_trim_relaxation: 1
+
+dataset:
+  added_bias: true
+
+hydra:
+  sweep:
+    dir: runs/${method.name}/${dataset.name}/${model.name}_L${model.L}_d${model.bond_dim}/prior${method.bond_prior_alpha}_init${model.init_strength}_trim${method.trimming_threshold}

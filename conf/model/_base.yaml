@@ -1,0 +1,7 @@
+# @package _global_
+model:
+  name: ???
+  L: 3
+  bond_dim: 18
+  init_strength: 0.1
+  output_site: null

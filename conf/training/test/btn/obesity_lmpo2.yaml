@@ -1,0 +1,13 @@
+# @package _global_
+# Auto-generated test config for BTN LMPO2 on obesity
+# Best config from ablation: L=3, prior=5.0, init=0.1, bond_dim=18
+
+defaults:
+  - /training/test/_base_uncertainty
+
+method:
+  bond_prior_alpha: 5.0
+
+model:
+  L: 3
+  init_strength: 0.1
