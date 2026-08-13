@@ -210,7 +210,8 @@ class BTN:
 
         bond_indices = [ind for ind in node.inds if ind not in excluded_indices]
 
-        node_bonds_e_q = 0
+        bond_e_log_lambda_sum = []
+        bond_lengths = []
         dims = 1
         for ind in bond_indices:
             bond = self.q_bonds[ind]
@@ -227,8 +228,14 @@ class BTN:
                 rate = rate[indices_to_keep]
 
             e_log_lambda = torch.digamma(conc) - torch.log(rate)
-            dims = dims * e_log_lambda.shape[0]
-            node_bonds_e_q += e_log_lambda.sum()
+            length = e_log_lambda.shape[0]
+            dims = dims * length
+            bond_e_log_lambda_sum.append(e_log_lambda.sum())
+            bond_lengths.append(length)
+
+        node_bonds_e_q = 0.0
+        for length, e_log_lambda_sum in zip(bond_lengths, bond_e_log_lambda_sum):
+            node_bonds_e_q += (dims // length) * e_log_lambda_sum
 
         e_log_p_node = 0.5 * node_bonds_e_q
         costant = -0.5 * dims * np.log(2 * np.pi)
