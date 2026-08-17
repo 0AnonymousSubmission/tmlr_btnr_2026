@@ -1,0 +1,52 @@
+model:
+  name: TR
+  L: 3
+  bond_dim: 5
+  init_strength: 0.1
+  output_site: null
+method:
+  name: BTN
+  bond_prior_alpha: 5.0
+  warmup_epochs: 5
+  trim_every: 6
+  trimming_threshold: 0.1
+  trim_method: relevance
+  soft_trim_relaxation: 1
+experiment_name: ${method.name}_${dataset.name}_${model.name}_L${model.L}_d${model.bond_dim}
+output:
+  results_dir: outputs/${method.name}/${dataset.name}/${model.name}_L${model.L}_d${model.bond_dim}/prior${method.bond_prior_alpha}_init${model.init_strength}
+dataset:
+  added_bias: true
+  name: concrete
+  task: regression
+  cap: 50
+  csv_path: null
+  size: medium
+  batch_size: 128
+slurm:
+  partition: anonymouscluster
+  time: '8:00:00'
+  mem: 2gb
+  gpu_arch: Ampere
+  cpus: 1
+  gpu: 1
+anonymouscluster:
+  queue: gpuv100
+  time: '8:00'
+  mem: 500MB
+  cpus: 4
+  gpu: 1
+training:
+  mode: single
+  n_epochs: 20
+  batch_size: 256
+  patience: 50
+  min_delta: 0.0001
+  val_split: 0.15
+  test_split: 0.15
+tracker:
+  backend: file
+  tracker_dir: runs
+seed: 42
+skip_completed: false
+device: cpu
