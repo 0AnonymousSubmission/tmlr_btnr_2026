@@ -1,4 +1,4 @@
-# BMPO - Bayesian Tensor Network Experiments
+# BTNR - Bayesian Tensor Network for Regression
 
 A framework for running Bayesian Tensor Network for Regression (BTNR) experiments and baselines using Hydra configuration management.
 
@@ -115,6 +115,61 @@ python run.py method.bond_prior_alpha=5.0  # Prior strength
 python run.py method.trimming_threshold=0.1  # Trimming threshold
 ```
 
+### Bond Trimming (BTN)
+
+BTN prunes bond dimensions during training. The scoring strategy and what may be
+trimmed are configurable:
+
+```bash
+# Trimming strategy (score used to decide which dimensions to keep)
+python run.py method.trim_method=relevance   # 1/E[lambda]           (default)
+python run.py method.trim_method=gamma       # effective parameters  (1 - alpha*Sigma)
+
+# When/how aggressively to trim
+python run.py method.trimming_threshold=0.1  # keep dims with score >= threshold
+python run.py method.trim_every=6            # trim every N epochs after warmup
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `method.trim_method` | `relevance` | Scoring strategy: `relevance` or `gamma`. |
+| `method.trim_nt_nodes` | `false` | If `true`, bonds touching a non-trainable (`NT`) block may be trimmed (the NT node is co-sliced); otherwise such bonds are protected. |
+| `method.trim_input` | `false` | If `true`, input (feature) legs may be trimmed; feature columns are dropped from all data streams. An input leg trimmed to 0 is fully detached (feature removed). |
+| `method.allow_empty_input` | `false` | If `true`, even the last input leg may be removed (constant model); otherwise at least one input is always kept. |
+| `method.remove_trivial_bonds` | `true` | If `true`, an internal bond trimmed to dimension 1 is squeezed out losslessly (predictions unchanged). |
+
+#### Controlling input (feature) trimming
+
+By default only internal bonds are trimmed; input legs are protected. To let BTN
+prune features (Bayesian feature selection):
+
+```bash
+# Enable input-leg trimming (feature columns are dropped from all data streams)
+python run.py method.trim_input=true
+
+# Trim harder so more inputs are removed
+python run.py method.trim_input=true method.trimming_threshold=1.0
+
+# Allow even the LAST input to be removed (degenerate constant model)
+python run.py method.trim_input=true method.allow_empty_input=true
+```
+
+- With `trim_input=false` (default): input legs are never touched.
+- With `trim_input=true`: an input leg may shrink, and if its kept-set becomes
+  empty it is **fully detached** (the feature is removed and its edge label is
+  dropped from the node). At least one input is kept unless
+  `allow_empty_input=true`.
+
+#### Controlling NT-block and trivial-bond trimming
+
+```bash
+# Trim through a fixed NT block too (the NT node is co-sliced)
+python run.py method.trim_nt_nodes=true
+
+# Keep size-1 internal bonds instead of squeezing them out
+python run.py method.remove_trivial_bonds=false
+```
+
 ### Training Parameters
 
 ```bash
@@ -130,6 +185,63 @@ python run.py seed=42                 # Random seed
 python run.py skip_completed=true     # Skip already completed runs (default)
 python run.py device=auto             # Device selection (auto/cpu/cuda)
 ```
+
+## Adding a Model
+
+A tensor-network model is a plain Python class whose `__init__` builds a quimb
+`TensorNetwork` and exposes the attributes consumed by the runner and BTN
+(use `model/MPO2_models.py`'s `MPO2` as the canonical template):
+
+| Attribute | Type | Purpose |
+|-----------|------|---------|
+| `self.tn` | `quimb.tensor.TensorNetwork` | the trainable network with open input (+ optional output) legs |
+| `self.input_labels` | `list` | how inputs are named/built for the data loader (e.g. `["x0", ..., "x{L-1}"]`) |
+| `self.input_dims` | `list[str]` | the open input index names contracted with the data |
+| `self.output_dims` | `list[str]` | output index name(s); `["out"]` if `output_dim > 1`, else `[]` (regression uses `output_dim=1` → `[]`) |
+| `self.bond_prior_alpha` *(optional)* | `float` | default bond-prior strength for this model |
+
+Conventions:
+- `create_model` calls the class with `L`, `bond_dim`, `phys_dim`, `output_dim=1`,
+  `init_strength`, `use_tn_normalization` (see `core/models.py`); read any extra
+  hyperparameters from `cfg.model.*` there.
+- Tag each tensor uniquely (e.g. `Node{i}`) so model tensors don't clash with the
+  input tensors created by the builder.
+- Mark any **non-trainable** tensors with the tag `"NT"` (see `MMPO2`'s mask) —
+  BTN keeps them fixed and protects their bonds during trimming.
+
+Steps:
+
+1. **Implement the class** under `model/` following the contract above.
+2. **Register it** in `model/__init__.py`: import it and add it to the `MODELS`
+   dict.
+3. **Add a Hydra config** `conf/model/mymodel.yaml`:
+
+   ```yaml
+   # @package _global_
+   defaults:
+     - _base
+
+   model:
+     name: MyModel    # MUST match the registry key in model/__init__.py
+   ```
+
+4. **Verify it works** with the sanity-check suite before running experiments:
+
+   ```bash
+   python run.py --sanity-check model=mymodel
+   ```
+
+   This builds the model via the normal path on small synthetic data and checks
+   it end-to-end with the BTN machinery — training, all trimming methods, NT
+   blocks, input detachment, trivial-bond removal, ELBO monotonicity, and
+   `gamma >= 0`. It prints a pass/fail table and exits non-zero if any check
+   fails (checks live in `code_sanity_checks/`). A new model should pass every
+   check before being used in experiments.
+
+   ```bash
+   # accepts the usual overrides
+   python run.py --sanity-check model=btt model.L=4 model.bond_dim=6
+   ```
 
 ## Hydra Multirun (Grid Search)
 
@@ -203,7 +315,7 @@ python run.py --multirun \
 ## Project Structure
 
 ```
-BMPO/
+src/
 ├── run.py                 # Main entry point
 ├── conf/                  # Hydra configuration
 │   ├── config.yaml        # Default configuration
@@ -215,5 +327,6 @@ BMPO/
 ├── experiments/           # Experiment runners
 ├── model/                 # Model implementations
 ├── baselines/             # Baseline implementations
+├── code_sanity_checks/    # --sanity-check suite for new models
 └── utils/                 # Utilities
 ```

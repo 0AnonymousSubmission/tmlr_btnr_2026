@@ -135,6 +135,7 @@ MODEL_TO_HYDRA_CONFIG = {
     "LMPO2": "lmpo2",
     "BTT": "btt",
     "CPD": "cpd",
+    "TR" : "tr",
 }
 
 
@@ -480,6 +481,11 @@ hydra:
             f.write(base_unc_content)
         print(f"Saved: {base_unc_yaml_path}")
     
+    # ALS is a point-prediction method (no predictive variance), so its test
+    # configs inherit the point base (uncertainty disabled) instead of the
+    # uncertainty base used by BTN.
+    base_config = "_base_point" if method.upper() == "ALS" else "_base_uncertainty"
+
     for (dataset, model), config in best_configs.items():
         config_name = f"{dataset}_{model.lower()}"
         yaml_path = method_dir / f"{config_name}.yaml"
@@ -499,7 +505,7 @@ hydra:
         content += f"""
 
 defaults:
-  - /training/test/_base_uncertainty
+  - /training/test/{base_config}
 
 method:
   bond_prior_alpha: {bond_prior_alpha}
@@ -528,6 +534,7 @@ def generate_jobs_env(all_jobs: list[str], base_path: Path):
     jobs_env_path = submit_dir / "jobs.env"
     
     btn_jobs = sorted([j for j in all_jobs if j.startswith("btn:")])
+    als_jobs = sorted([j for j in all_jobs if j.startswith("als:")])
     baseline_jobs = sorted([j for j in all_jobs if j.startswith("baseline:")])
     
     total_jobs = len(all_jobs)
@@ -545,6 +552,11 @@ def generate_jobs_env(all_jobs: list[str], base_path: Path):
     if btn_jobs:
         lines.append(f"    # BTN tests ({len(btn_jobs)} jobs)")
         for job in btn_jobs:
+            lines.append(f'    "{job}"')
+    
+    if als_jobs:
+        lines.append(f"    # ALS tests ({len(als_jobs)} jobs)")
+        for job in als_jobs:
             lines.append(f'    "{job}"')
     
     if baseline_jobs:
@@ -595,8 +607,16 @@ def main():
     )
     parser.add_argument(
         "--generate-test-configs",
+        dest="generate_test_configs",
         action="store_true",
-        help="Generate hydra training configs for test runs",
+        default=True,
+        help="Generate hydra training configs for test runs (default: on)",
+    )
+    parser.add_argument(
+        "--no-generate-test-configs",
+        dest="generate_test_configs",
+        action="store_false",
+        help="Disable generating hydra training/test configs",
     )
     parser.add_argument(
         "--test-seeds",
@@ -620,6 +640,11 @@ def main():
         "--skip-btn",
         action="store_true",
         help="Skip BTN processing",
+    )
+    parser.add_argument(
+        "--skip-als",
+        action="store_true",
+        help="Skip ALS processing",
     )
     parser.add_argument(
         "--skip-baseline",
@@ -655,7 +680,24 @@ def main():
                 print("\nGenerating hydra test configs for BTN...")
                 generate_hydra_test_configs(btn_best, "BTN", base_path, test_seeds, all_jobs)
     
-    # NOTE: ALS is skipped for uncertainty tests - it has no predictive variance
+    # Process ALS (point-prediction method: no predictive variance, so its test
+    # configs disable uncertainty metrics via _base_point). Best config additionally
+    # selects bond_dim.
+    if not args.skip_als:
+        print("\n" + "=" * 100)
+        print(f"Processing ALS runs... (optimizing {metric})")
+        print("=" * 100)
+        als_runs = find_all_runs(base_path, "ALS", metric)
+        print(f"Found {len(als_runs)} ALS runs")
+
+        if als_runs:
+            als_best = find_best_configs(als_runs, make_als_config_key, metric)
+            print_summary(als_best, "ALS", metric)
+            save_yaml_configs(als_best, "ALS", base_path, metric)
+            if args.generate_test_configs:
+                print("\nGenerating hydra test configs for ALS...")
+                generate_hydra_test_configs(als_best, "ALS", base_path, test_seeds, all_jobs)
+
     
     # Process Baseline (Bayesian baselines have predictive uncertainty)
     if not args.skip_baseline:
@@ -681,12 +723,15 @@ def main():
     print("=" * 100)
     if not args.skip_btn:
         print(f"BTN configs saved to: {base_path / 'conf' / 'test_config' / 'btn'}")
+    if not args.skip_als:
+        print(f"ALS configs saved to: {base_path / 'conf' / 'test_config' / 'als'}")
     if not args.skip_baseline:
         print(f"Baseline configs saved to: {base_path / 'conf' / 'test_config' / 'baseline'}")
     if args.generate_test_configs:
         print(f"\nHydra test configs saved to: {base_path / 'conf' / 'training' / 'test'}")
         print("\nTo run tests, use:")
         print("  python run.py method=btn model=mpo2 dataset=concrete training=test/btn/concrete_mpo2 -m")
+        print("  python run.py method=als model=mpo2 dataset=concrete training=test/als/concrete_mpo2 -m")
         print("  python run.py method=baseline model=horseshoe_bnn dataset=concrete training=test/baseline/concrete_horseshoe_bnn -m")
 
 

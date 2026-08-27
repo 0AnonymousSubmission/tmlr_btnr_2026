@@ -1,11 +1,12 @@
-# type: ignore
-import torch
-import sys
 import os
+import sys
+
+import torch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from model.load_ucirepo import get_ucidata, datasets as uci_datasets
 from model.load_from_csv import get_csvdata
+from model.load_ucirepo import datasets as uci_datasets
+from model.load_ucirepo import get_ucidata
 
 
 def load_dataset(
@@ -141,7 +142,6 @@ def append_bias(data):
         bias = torch.ones(X.shape[0], 1, dtype=X.dtype, device=X.device)
         result[key] = torch.cat([X, bias], dim=1)
 
-    # Copy other keys (y_train, y_val, y_test, etc.) unchanged
     for key in data:
         if key not in result:
             result[key] = data[key]
@@ -253,7 +253,6 @@ def load_polynomial_dataset(
     else:
         coef = torch.randn(n_total_terms, dtype=torch.float64, device=device)
 
-    # y = sum_i coef_i * prod_j x_j^{exponent_ij}
     y = torch.zeros(n_samples, dtype=torch.float64, device=device)
     for i, term in enumerate(terms):
         term_value = torch.ones(n_samples, dtype=torch.float64, device=device)
@@ -352,15 +351,12 @@ def _generate_polynomial_terms(
 
     terms = []
 
-    # Generate terms of each total degree from 0 to degree
     for d in range(degree + 1):
-        # Generate all ways to distribute degree d among n_features
         for combo in combinations_with_replacement(range(n_features), d):
             exponents = [0] * n_features
             for idx in combo:
                 exponents[idx] += 1
 
-            # Skip pure powers if interaction_only
             if interaction_only and d > 1:
                 non_zero_count = sum(1 for e in exponents if e > 0)
                 if non_zero_count < 2:
@@ -423,7 +419,6 @@ def load_featurewise_polynomial_dataset(
     else:
         coef = torch.randn(n_terms, dtype=torch.float64, device=device)
 
-    # y = sum_i coef_i * prod_j feat_j^{exp_ij}
     y = torch.zeros(n_samples, dtype=torch.float64, device=device)
     for i, term in enumerate(terms):
         term_value = torch.ones(n_samples, dtype=torch.float64, device=device)

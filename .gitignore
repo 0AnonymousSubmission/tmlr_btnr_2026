@@ -1,0 +1,5 @@
+outputs*
+runs*
+tests*
+__pycache__/
+**/__pycache__/

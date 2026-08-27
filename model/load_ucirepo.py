@@ -1,5 +1,10 @@
-import torch
 import ssl
+
+import pandas as pd
+import torch
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from ucimlrepo import fetch_ucirepo
 
 _original_create_default_context = ssl.create_default_context
 
@@ -12,15 +17,6 @@ def _create_unverified_context(*args, **kwargs):
 ssl.create_default_context = _create_unverified_context
 ssl._create_default_https_context = _create_unverified_context
 
-from ucimlrepo import fetch_ucirepo
-import pandas as pd
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import QuantileTransformer, StandardScaler
-
-# NOTE: obesity (544) has categorical target but UCI lists it as Classification/Regression/Clustering.
-# We use it as ordinal regression (category codes 0-6).
-# NOTE: seoulBike (560) has wrong target in UCI metadata ("Functioning Day" instead of "Rented Bike Count").
-# We fix this via DATASETS_WITH_TARGET_FIX.
 datasets = [
     ("student_perf", 320, "regression"),
     ("abalone", 1, "regression"),
@@ -139,7 +135,7 @@ def get_ucidata(dataset_id, task, device="cuda", cap=50):
     )
 
     # Fit StandardScaler on training numeric columns only
-    scaler = StandardScaler()  #
+    scaler = StandardScaler()
     # Some datasets may have zero numeric columns after preprocessing
     if len(orig_num_cols) > 0:
         scaler.fit(X_train_df[orig_num_cols])

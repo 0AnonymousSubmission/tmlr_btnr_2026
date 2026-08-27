@@ -1,5 +1,18 @@
 #!/usr/bin/env python3
 """Generate the LaTeX discrimination table (AUSE and Spearman).
+
+Discrimination measures whether the predicted uncertainty ranks points by their
+error. We report two complementary metrics, datasets as columns, models as rows:
+  * AUSE                 (unc_ause,         lower is better)
+  * Spearman (unc vs err)(unc_spearman_err, higher is better)
+Each metric forms a row-block: BTN (the family with the best validation
+predictive quality per dataset) followed by each baseline. Mean +- std over
+seeds; the best value per dataset column within a block is bolded according to
+the metric's optimisation direction.
+
+Style matches paper_script/make_uncertainty_tables.py (shortstack cells,
+resizebox).
+
 Output (into paper_script/tables/):
   unc_discrimination_table.tex
 """
@@ -22,22 +35,24 @@ ROW_RULE = r"\midrule"
 BLOCK_RULE = r"\midrule\midrule"
 RESIZE_TO_TEXTWIDTH = True
 
-CAPTION = (r"Discrimination metrics, mean \(\pm\) std over seeds: the area under the "
-           r"sparsification error (AUSE, lower is better) and the Spearman correlation "
-           r"between predicted uncertainty and absolute error (higher is better). "
-           r"BTN is its best configuration per dataset and metric. Best per dataset "
-           r"within each block is in bold.")
+# Caption read verbatim from captions/unc_discrimination_caption.tex.
+CAPTION_NAME = "unc_discrimination"
+CAPTION_TRAILING_PERCENT = False
 LABEL = "tab:discrimination"
+
+
+def _btn_block_rows(metric):
+    """The single BTN (label, cells) row (val-quality-best family per dataset)."""
+    cells = {}
+    for ds in C.DATASET_ORDER:
+        r = C.btn_rows(ds, metric)
+        cells[ds] = (r[0][2], r[0][3]) if r else None
+    return [(C.BTN_DISPLAY, cells)]
 
 
 def _block_rows(metric):
     """rows: list of (label, {dataset: (mean,std) or None}) for one metric."""
-    rows = []
-    btn_cells = {}
-    for ds in C.DATASET_ORDER:
-        bf = C.best_btn_family(ds, metric)
-        btn_cells[ds] = (bf[1], bf[2]) if bf else None
-    rows.append((C.BTN_DISPLAY, btn_cells))
+    rows = list(_btn_block_rows(metric))
     for b in C.BASELINE_ORDER:
         cells = {}
         present = False
@@ -61,6 +76,7 @@ def _best_per_dataset(rows, metric, fmt):
 
 
 def format_table():
+    n_btn = 1
     n = len(C.DATASET_ORDER)
     colspec = "l" + "c" * n
     out = [r"\begin{tabular}{" + colspec + "}", r"\toprule"]
@@ -86,9 +102,9 @@ def format_table():
         out.append(r"\multicolumn{" + str(n + 1) + r"}{l}{\textit{" + heading + r"}} \\")
         out.append(ROW_RULE)
         for ri, (label, cells) in enumerate(rows):
-            if ri == 1:           # after BTN, before the first baseline
+            if ri == n_btn:       # after the BTN row(s), before the first baseline
                 out.append(BLOCK_RULE)
-            elif ri > 1:          # between consecutive baselines
+            elif ri > n_btn or (0 < ri < n_btn):  # between BTN rows / baselines
                 out.append(ROW_RULE)
             rl = ROW_LABEL.format(label=label)
             out.append(" & ".join([rl] + [cell(ds, cells[ds]) for ds in C.DATASET_ORDER]) + r" \\")
@@ -98,15 +114,16 @@ def format_table():
     if RESIZE_TO_TEXTWIDTH:
         body = "\\resizebox{\\textwidth}{!}{%\n" + body + "\n}"
 
+    label = LABEL
     wrapped = [r"\begin{table}[t]", r"\centering",
-               r"\caption{" + CAPTION + "}",
-               r"\label{" + LABEL + "}", body, r"\end{table}"]
+               C.caption(CAPTION_NAME, trailing_percent=CAPTION_TRAILING_PERCENT),
+               r"\label{" + label + "}", body, r"\end{table}"]
     return "\n".join(wrapped)
 
 
-def main():
+def main(variant=None):
     os.makedirs(C.TABLES_DIR, exist_ok=True)
-    print("Discrimination table:")
+    print("Discrimination table: [valbest]")
     tex = format_table()
     path = os.path.join(C.TABLES_DIR, "unc_discrimination_table.tex")
     with open(path, "w") as f:

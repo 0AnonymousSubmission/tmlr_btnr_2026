@@ -1,8 +1,4 @@
 # type: ignore
-"""
-Binary Tensor Tree (BTT) Models.
-"""
-
 import torch
 import quimb.tensor as qt
 import numpy as np

@@ -1,5 +1,17 @@
 #!/usr/bin/env python3
 """Generate the LaTeX outlier-detection table (averaged across datasets).
+
+Synthetic outliers are injected into the test set and each model must flag them
+using an anomaly score derived from its predictive distribution (the predictive
+standard deviation or the per-point NLL). We report the area under the ROC curve
+and the area under the precision-recall curve for both scores.
+
+Because the per-dataset table is unreadable (ten dataset columns), this table is
+compact: models are rows and metrics are columns, and each cell is the AVERAGE
+across the ten datasets, i.e. the mean over datasets of the per-dataset seed mean,
+plus or minus the standard deviation across datasets. Best per metric column is
+bolded according to the metric direction (higher AUROC/AUPR is better).
+
 Output (into paper_script/tables/):
   unc_outlier_table.tex
 """
@@ -21,31 +33,35 @@ PM = r"$\pm$"
 MISSING = "--"
 RESIZE_TO_TEXTWIDTH = True
 
-CAPTION = (r"Outlier detection averaged across the ten datasets. "
-           r"Synthetic outliers are flagged using the predictive standard "
-           r"deviation (std) or the per-point NLL as the anomaly score. We report "
-           r"the area under the ROC curve (AUROC) and the area under the "
-           r"precision--recall curve (AUPR), where higher is better. Each cell is the "
-           r"mean over datasets of the per-dataset seed mean \(\pm\) the standard "
-           r"deviation across datasets. BTN is its best configuration per dataset "
-           r"and metric. Best per column is in bold.")
+# Caption read verbatim from captions/unc_outlier_caption.tex.
+CAPTION_NAME = "unc_outlier"
+CAPTION_TRAILING_PERCENT = False
+# Width passed to \resizebox (the target scales this table to 0.7\textwidth).
+RESIZE_WIDTH = r"0.7\textwidth"
 LABEL = "tab:outlier"
 
 
-def _model_dataset_mean(k, ds, metric):
-    """Per-dataset seed mean for model `k` on dataset `ds`, or None."""
-    if k == "BTN":
-        bf = C.best_btn_family(ds, metric)
-        a = C.agg(C.scalar_values("BTN", ds, bf[0], metric)) if bf else None
+# A "row spec" is (row_key, label) where row_key is either a baseline key or
+# the BTN selector tag "BTN" (the val-quality-best family per dataset).
+def _row_specs():
+    btn = [("BTN", C.BTN_DISPLAY)]
+    return btn + [(b, C.display_name(b)) for b in C.BASELINE_ORDER]
+
+
+def _model_dataset_mean(row_key, ds, metric):
+    """Per-dataset seed mean for a row_key on dataset `ds`, or None."""
+    if row_key == "BTN":
+        vb = C.valbest_btn_metric(ds, metric)
+        a = (vb[1], vb[2], vb[3]) if vb else None
     else:
-        a = C.agg(C.scalar_values("baseline", ds, k, metric))
+        a = C.agg(C.scalar_values("baseline", ds, row_key, metric))
     return a[0] if a else None
 
 
-def _avg_over_datasets(k, metric):
+def _avg_over_datasets(row_key, metric):
     """(mean, std) across datasets of the per-dataset seed means, or None."""
     vals = [v for ds in C.DATASET_ORDER
-            if (v := _model_dataset_mean(k, ds, metric)) is not None]
+            if (v := _model_dataset_mean(row_key, ds, metric)) is not None]
     if not vals:
         return None
     m = statistics.mean(vals)
@@ -55,7 +71,10 @@ def _avg_over_datasets(k, metric):
 
 def format_table():
     fmt = f"{{:.{DECIMALS}f}}"
-    models = list(C.MODEL_ORDER)
+    specs = _row_specs()
+    n_btn = 1
+    models = [rk for rk, _ in specs]
+    labels = {rk: lbl for rk, lbl in specs}
 
     # cell values: cells[model][metric] = (mean, std) or None
     cells = {k: {} for k in models}
@@ -90,26 +109,27 @@ def format_table():
     out.append(" & ".join(header) + r" \\")
     out.append(r"\midrule")
     for ki, k in enumerate(models):
-        if ki == 1:
+        if ki == n_btn:                     # after the BTN row(s)
             out.append(r"\midrule\midrule")
-        elif ki > 1:
+        elif ki > n_btn or (0 < ki < n_btn):
             out.append(r"\midrule")
-        row = [C.display_name(k)] + [cell(k, m) for m, _ in METRIC_COLUMNS]
+        row = [labels[k]] + [cell(k, m) for m, _ in METRIC_COLUMNS]
         out.append(" & ".join(row) + r" \\")
     out += [r"\bottomrule", r"\end{tabular}"]
     body = "\n".join(out)
     if RESIZE_TO_TEXTWIDTH:
-        body = "\\resizebox{\\textwidth}{!}{%\n" + body + "\n}"
+        body = "\\resizebox{" + RESIZE_WIDTH + "}{!}{%\n" + body + "\n}"
 
+    label = LABEL
     wrapped = [r"\begin{table}[t]", r"\centering",
-               r"\caption{" + CAPTION + "}",
-               r"\label{" + LABEL + "}", body, r"\end{table}"]
+               C.caption(CAPTION_NAME, trailing_percent=CAPTION_TRAILING_PERCENT),
+               r"\label{" + label + "}", body, r"\end{table}"]
     return "\n".join(wrapped)
 
 
-def main():
+def main(variant=None):
     os.makedirs(C.TABLES_DIR, exist_ok=True)
-    print("Outlier table:")
+    print("Outlier table: [valbest]")
     tex = format_table()
     path = os.path.join(C.TABLES_DIR, "unc_outlier_table.tex")
     with open(path, "w") as f:

@@ -10,8 +10,10 @@ Usage:
 """
 
 import os
+
 import pandas as pd
-from model._preproc import split_data, scale_dataframes, to_tensors
+
+from model._preproc import scale_dataframes, split_data, to_tensors
 
 CSVS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "csvs")
 

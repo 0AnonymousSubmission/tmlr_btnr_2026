@@ -1,4 +1,3 @@
-# type: ignore
 """
 Flexible experiment tracking system supporting multiple backends.
 
@@ -8,11 +7,11 @@ Supported backends:
 - 'none': No tracking (useful for quick tests)
 """
 
-import os
 import json
+import os
 import time
-from typing import Dict, Any, Optional, List
 from pathlib import Path
+from typing import Any
 
 MAX_RETRIES = 3
 RETRY_DELAY = 10
@@ -41,35 +40,29 @@ class TrackerError(Exception):
     rather than continuing with broken tracking.
     """
 
-    pass
 
 
 class BaseTracker:
     """Base class for all trackers."""
 
-    def __init__(self, experiment_name: str, config: Dict[str, Any]):
+    def __init__(self, experiment_name: str, config: dict[str, Any]):
         self.experiment_name = experiment_name
         self.config = config
 
-    def log_hparams(self, hparams: Dict[str, Any]):
+    def log_hparams(self, hparams: dict[str, Any]):
         """Log hyperparameters."""
-        pass
 
-    def log_metrics(self, metrics: Dict[str, float], step: int):
+    def log_metrics(self, metrics: dict[str, float], step: int):
         """Log metrics for a specific step/epoch."""
-        pass
 
-    def log_summary(self, summary: Dict[str, Any]):
+    def log_summary(self, summary: dict[str, Any]):
         """Log final summary statistics."""
-        pass
 
-    def log_curves(self, curves: Dict[str, Any]):
+    def log_curves(self, curves: dict[str, Any]):
         """Log non-scalar diagnostic curves (e.g. reliability / sparsification)."""
-        pass
 
     def finalize(self):
         """Cleanup and finalize tracking."""
-        pass
 
     def close(self):
         """Alias for finalize."""
@@ -82,9 +75,9 @@ class FileTracker(BaseTracker):
     def __init__(
         self,
         experiment_name: str,
-        config: Dict[str, Any],
+        config: dict[str, Any],
         output_dir: str = "experiment_logs",
-        run_name: Optional[str] = None,
+        run_name: str | None = None,
     ):
         super().__init__(experiment_name, config)
         self.output_dir = Path(output_dir)
@@ -96,20 +89,20 @@ class FileTracker(BaseTracker):
         self.summary = {}
         self.curves = {}
 
-    def log_hparams(self, hparams: Dict[str, Any]):
+    def log_hparams(self, hparams: dict[str, Any]):
         """Log hyperparameters."""
         self.hparams.update(hparams)
 
-    def log_metrics(self, metrics: Dict[str, float], step: int):
+    def log_metrics(self, metrics: dict[str, float], step: int):
         """Log metrics for a specific step/epoch."""
         entry = {"step": step, **metrics}
         self.metrics_log.append(entry)
 
-    def log_summary(self, summary: Dict[str, Any]):
+    def log_summary(self, summary: dict[str, Any]):
         """Log final summary statistics."""
         self.summary.update(summary)
 
-    def log_curves(self, curves: Dict[str, Any]):
+    def log_curves(self, curves: dict[str, Any]):
         """Store diagnostic curves to be persisted in the output JSON."""
         self.curves.update(curves)
 
@@ -147,9 +140,9 @@ class AIMTracker(BaseTracker):
     def __init__(
         self,
         experiment_name: str,
-        config: Dict[str, Any],
-        repo: Optional[str] = None,
-        run_name: Optional[str] = None,
+        config: dict[str, Any],
+        repo: str | None = None,
+        run_name: str | None = None,
     ):
         super().__init__(experiment_name, config)
 
@@ -174,20 +167,20 @@ class AIMTracker(BaseTracker):
 
         _with_retry(init_run, "Failed to initialize AIM run")
 
-    def log_hparams(self, hparams: Dict[str, Any]):
+    def log_hparams(self, hparams: dict[str, Any]):
         def op():
             self.run["hparams"] = hparams
 
         _with_retry(op, "Failed to log hparams to AIM")
 
-    def log_metrics(self, metrics: Dict[str, float], step: int):
+    def log_metrics(self, metrics: dict[str, float], step: int):
         def op():
             for key, value in metrics.items():
                 self.run.track(value, name=key, step=step)
 
         _with_retry(op, f"Failed to log metrics to AIM at step {step}")
 
-    def log_summary(self, summary: Dict[str, Any]):
+    def log_summary(self, summary: dict[str, Any]):
         def op():
             self.run["summary"] = summary
 
@@ -204,22 +197,22 @@ class AIMTracker(BaseTracker):
 class MultiTracker(BaseTracker):
     """Track to multiple backends simultaneously."""
 
-    def __init__(self, trackers: List[BaseTracker]):
+    def __init__(self, trackers: list[BaseTracker]):
         self.trackers = trackers
 
-    def log_hparams(self, hparams: Dict[str, Any]):
+    def log_hparams(self, hparams: dict[str, Any]):
         for tracker in self.trackers:
             tracker.log_hparams(hparams)
 
-    def log_metrics(self, metrics: Dict[str, float], step: int):
+    def log_metrics(self, metrics: dict[str, float], step: int):
         for tracker in self.trackers:
             tracker.log_metrics(metrics, step)
 
-    def log_summary(self, summary: Dict[str, Any]):
+    def log_summary(self, summary: dict[str, Any]):
         for tracker in self.trackers:
             tracker.log_summary(summary)
 
-    def log_curves(self, curves: Dict[str, Any]):
+    def log_curves(self, curves: dict[str, Any]):
         for tracker in self.trackers:
             tracker.log_curves(curves)
 
@@ -231,11 +224,10 @@ class MultiTracker(BaseTracker):
 class NoOpTracker(BaseTracker):
     """No-op tracker for when tracking is disabled."""
 
-    pass
 
 
 def create_tracker(
-    experiment_name: str, config: Dict[str, Any], backend: str = "file", **kwargs
+    experiment_name: str, config: dict[str, Any], backend: str = "file", **kwargs
 ) -> BaseTracker:
     """
     Factory function to create appropriate tracker.

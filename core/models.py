@@ -1,5 +1,3 @@
-# type: ignore
-import torch
 from omegaconf import DictConfig, OmegaConf
 
 from model import MODELS

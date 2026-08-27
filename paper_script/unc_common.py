@@ -1,13 +1,73 @@
 #!/usr/bin/env python3
 """Shared loading / aggregation / styling utilities for uncertainty figures.
+
+All paper figures and uncertainty tables import from this module so that data
+selection, seed pooling, NaN handling, model naming and plot styling are
+identical everywhere.
+
+Data layout (the tree the user pointed at, which actually contains the
+``uncertainty`` block -- NOTE: ``tests_uncertainty_runs`` does NOT):
+
+    tests_uncertainty/<group>/<dataset>/<family_dir>/<config>/*.json
+
+where
+    group       in {BTN, ALS, baseline}      (ALS has NO uncertainty block)
+    dataset     in DATASET_ORDER
+    family_dir  e.g. "LMPO2_L3_d18" (BTN) or "SparseGP/<config>" (baseline)
+
+Each run json has an ``uncertainty`` dict with the metrics described in
+UNCERTAINTY_METRICS.md plus two stored curves:
+    reliability_curve  : {expected:[...], observed:[...]}
+    sparsification_curve : {fractions:[...], rmse_by_unc:[...], rmse_by_oracle:[...]}
 """
 
 import os
+import re
 import glob
 import json
 import math
 import statistics
-from collections import defaultdict
+
+
+# ---------------------------------------------------------------------------
+# Robust JSON loading
+# ---------------------------------------------------------------------------
+# Some run JSONs on disk contain a corruption where a stray "--" was spliced
+# into the middle of a numeric literal, e.g.
+#     "test_loss": 355.657--501,     "elbo_relative": 806423441.--7,
+#     "val_quality": 0.4--3385691534, "h_nodes": 2691.--826591,
+# This makes the file unparseable. We DO NOT touch the files on disk (the
+# experiment records must stay pristine); instead we repair the text in memory
+# and parse that. The affected fields are auxiliary and unused by the tables,
+# but the repair also rescues any run whose primary metrics sit in the same
+# file, so those seeds are no longer silently dropped.
+
+# Matches a number where a run of '-' was injected after the decimal point or
+# between digits, e.g. 355.657--501 / 806423441.--7 / 0.4--3385691534.
+_CORRUPT_NUM_RE = re.compile(r"(?<=\d)-{2,}(?=\d)|(?<=\.)-{2,}(?=\d)")
+
+
+def load_run_json(filepath):
+    """Parse a run JSON, transparently repairing the known '--' number
+    corruption in memory. Returns the parsed dict, or None if it still can't
+    be parsed. The file on disk is never modified."""
+    try:
+        with open(filepath) as fh:
+            text = fh.read()
+    except OSError:
+        return None
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+    # Strip stray '--' splices from inside numeric literals and retry.
+    repaired = _CORRUPT_NUM_RE.sub("", text)
+    if repaired != text:
+        try:
+            return json.loads(repaired)
+        except json.JSONDecodeError:
+            return None
+    return None
 
 # ============================================================================
 # CONFIG  (edit everything here)
@@ -21,6 +81,51 @@ ROOT = os.path.join(_REPO_ROOT, "tests_uncertainty")
 
 IMAGES_DIR = os.path.join(_SCRIPT_DIR, "images", "uncertainty")
 TABLES_DIR = os.path.join(_SCRIPT_DIR, "tables")
+CAPTIONS_DIR = os.path.join(_SCRIPT_DIR, "captions")
+
+# Per-dataset std(y), precomputed by compute_target_std.py. The pipeline
+# standardizes X but NOT y, so predictive std / sharpness live in raw target
+# units and are not comparable across datasets; dividing by std(y) makes them
+# a data-intrinsic, comparable scale (1.0 == as wide as the marginal spread).
+_TARGET_STD_CSV = os.path.join(_SCRIPT_DIR, "target_std.csv")
+
+
+def _load_target_std():
+    """dataset -> std(y), read from target_std.csv. {} if the file is absent."""
+    import csv
+    if not os.path.isfile(_TARGET_STD_CSV):
+        return {}
+    out = {}
+    with open(_TARGET_STD_CSV, newline="") as f:
+        for row in csv.DictReader(f):
+            try:
+                out[row["dataset"]] = float(row["y_std"])
+            except (KeyError, ValueError, TypeError):
+                continue
+    return out
+
+
+_TARGET_STD = _load_target_std()
+
+
+def target_std(dataset):
+    """std(y) for a dataset, or None if unavailable/non-positive."""
+    s = _TARGET_STD.get(dataset)
+    return s if (s and s > 0 and math.isfinite(s)) else None
+
+
+def caption(name, trailing_percent=False):
+    r"""Return a ``\caption{...}`` block whose body is read verbatim from
+    ``captions/<name>_caption.tex``.
+
+    Captions live in external files so the wording can be edited without
+    touching the generation code. ``trailing_percent`` appends ``%`` right
+    after the closing brace (used by some tables to suppress the space that a
+    line break would otherwise introduce)."""
+    path = os.path.join(CAPTIONS_DIR, name + "_caption.tex")
+    with open(path) as fh:
+        body = fh.read()
+    return r"\caption{" + body + "}" + ("%" if trailing_percent else "")
 
 # --- Datasets ----------------------------------------------------------------
 DATASET_ORDER = [
@@ -35,7 +140,7 @@ DATASET_DISPLAY = {
 }
 
 # --- BTN families ------------------------------------------------------------
-TN_FAMILY_ORDER = ["CPD", "LMPO2", "MPO2", "BTT"]
+TN_FAMILY_ORDER = ["CPD", "LMPO2", "MPO2", "BTT", "TR"]
 
 # --- Baselines (row key -> source directory names pooled into that row) ------
 # BayesianWideDeep ("BWD") excluded (unstable; matches make_r2_table.py).
@@ -50,8 +155,9 @@ BASELINE_SOURCES = {
     "BASS": ["MvBayes"],
 }
 
-# The BTN entry is a single curated row: the best-performing family per metric
-# is chosen automatically (see best_btn_family).
+# The BTN entry is a single curated row per dataset: the BTN family that
+# predicts best on the validation set (`val_quality`) is chosen automatically
+# (see valbest_btn_family), and THAT family's uncertainty metrics are reported.
 BTN_DISPLAY = "BTNR"
 
 # --- Metric semantics --------------------------------------------------------
@@ -76,16 +182,18 @@ METRIC_INFO = {
 
 # --- Styling -----------------------------------------------------------------
 # One consistent color per model across every figure. BTN is the highlight.
+# "BTN" is the single per-dataset val-quality-best BTN family row.
 MODEL_ORDER = ["BTN"] + BASELINE_ORDER
 COLORS = {
-    "BTN":   "#d62728",   # red, the highlight
+    "BTN":   "#d62728",   # red, the highlight (BTNR)
     "GP":    "#1f77b4",   # blue
     "BDE":   "#2ca02c",   # green
     "HSBNN": "#9467bd",   # purple
     "BASS":   "#ff7f0e",   # orange
 }
 MARKERS = {
-    "BTN": "o", "GP": "s", "BDE": "^", "HSBNN": "D", "BASS": "v",
+    "BTN": "x",
+    "GP": "s", "BDE": "^", "HSBNN": "o", "BASS": "v",
 }
 # z-order so BTN draws on top.
 ZORDER = {"BTN": 5, "GP": 3, "BDE": 3, "HSBNN": 3, "BASS": 3}
@@ -93,20 +201,30 @@ ZORDER = {"BTN": 5, "GP": 3, "BDE": 3, "HSBNN": 3, "BASS": 3}
 # The single model we visually emphasise everywhere (drawn bigger/bolder/on top).
 HIGHLIGHT = "BTN"
 
+
+def is_btn_key(key):
+    """True for the BTN row key."""
+    return key == "BTN"
+
+
+def model_order():
+    """Full ordered model keys (BTN row then baselines)."""
+    return ["BTN"] + BASELINE_ORDER
+
 # --- Centralised plot dimensions ---------------------------------------------
 # Every figure pulls its line widths / marker sizes from here, distinguishing
 # the highlighted model from the rest. Edit once -> applies to all figures.
 STYLE = {
     # line plots (reliability / sparsification curves)
-    "line_lw":        {"hi": 1.6, "lo": 1.0},   # main curves
+    "line_lw":        {"hi": 0.7, "lo": 0.5},   # main curves
     "line_ms":        {"hi": 3.0, "lo": 2.5},   # markers on curves
     "oracle_lw":      0.9,                        # BTN oracle (sparsification)
     "ref_lw":         1.0,                        # reference diagonal / target line
-    "band_alpha":     0.12,                       # +-std shaded band (reliability)
-    "gap_alpha":      0.15,                       # AUSE gap shading (sparsification)
+    "band_alpha":     0.2,                       # +-std shaded band (reliability)
+    "gap_alpha":      0.25,                       # AUSE gap shading (sparsification)
     # marker / scatter plots (scatter / rank dotplot / picp)
-    "marker_ms":      {"hi": 12, "lo": 8},
-    "edge_lw":        {"hi": 1.0, "lo": 0.0},    # marker edge (black ring on highlight)
+    "marker_ms":      {"hi": 9, "lo": 7},
+    "edge_lw":        {"hi": 1.5, "lo": 1.2},    # marker edge (black ring on highlight)
     "errorbar_lw":    1.0,
     "capsize":        2.5,
     # rank heatmap highlight box
@@ -121,7 +239,7 @@ def style_for(key, kind="line"):
     kind="marker" -> dict(ms, markeredgewidth, markeredgecolor, zorder)
     Always merge with COLORS[key] / MARKERS[key] at the call site.
     """
-    hi = (key == HIGHLIGHT)
+    hi = is_btn_key(key)
     sel = "hi" if hi else "lo"
     if kind == "line":
         return dict(lw=STYLE["line_lw"][sel], ms=STYLE["line_ms"][sel],
@@ -129,7 +247,7 @@ def style_for(key, kind="line"):
     if kind == "marker":
         return dict(ms=STYLE["marker_ms"][sel],
                     markeredgewidth=STYLE["edge_lw"][sel],
-                    markeredgecolor="black" if hi else "none",
+                    markeredgecolor= COLORS[key],
                     zorder=ZORDER[key])
     raise ValueError(kind)
 
@@ -143,10 +261,18 @@ def display_name(key):
 # Prefix for BTN family display names (matches make_r2_table.py: "B-").
 BTN_FAMILY_PREFIX = "B-"
 
+# Data keys that should render under a different display name (keys stay as-is
+# for result-directory lookup; only the paper label changes). "MPO2" -> "MPS".
+FAMILY_DISPLAY_NAME = {
+    "MPO2": "MPS",
+}
+
 
 def family_display(family):
-    """Display name for a BTN family, e.g. 'LMPO2' -> 'B-LMPO2'."""
-    return BTN_FAMILY_PREFIX + family if family else family
+    """Display name for a BTN family, e.g. 'LMPO2' -> 'B-LMPO2', 'MPO2' -> 'B-MPS'."""
+    if not family:
+        return family
+    return BTN_FAMILY_PREFIX + FAMILY_DISPLAY_NAME.get(family, family)
 
 
 # ============================================================================
@@ -181,17 +307,68 @@ def apply_style():
     return plt
 
 
-def savefig(fig, name):
+def finalize_grid(fig, *, supxlabel, supylabel, suptitle, handles, labels,
+                  ncol=None, legend_pad=0.0):
+    """Lay out a small-multiples grid with no trapped whitespace or overlap.
+
+    Requires the figure to have been created with ``layout="constrained"``.
+    Elements are stacked cleanly from top to bottom as
+    ``suptitle -> panels -> supxlabel -> legend`` by putting the shared
+    x-axis description on the legend via its title, which avoids the classic
+    ``supxlabel``/figure-legend collision.
+
+    Knobs:
+      * ``ncol``       -- legend columns (default: one per entry, single row)
+      * ``legend_pad`` -- extra vertical gap (figure fraction) below the panels
+                          before the legend; increase to push the legend down.
+    """
+    fig.suptitle(suptitle, fontsize=12)
+    fig.supylabel(supylabel)
+    ncol = ncol or len(labels)
+    leg = fig.legend(handles, labels, loc="outside lower center", ncol=ncol,
+                     title=supxlabel, title_fontsize=10)
+    # Render the legend title (the x-axis description) like a normal supxlabel.
+    if leg.get_title() is not None:
+        leg.get_title().set_fontsize(plt_labelsize())
+    if legend_pad:
+        eng = fig.get_layout_engine()
+        try:
+            eng.set(h_pad=eng.get()["h_pad"] + legend_pad)
+        except Exception:
+            pass
+    return leg
+
+
+def plt_labelsize():
+    import matplotlib
+    return matplotlib.rcParams.get("axes.labelsize", 10)
+
+
+def savefig(fig, name, pad_inches=0.08):
     """Save a figure as PDF into IMAGES_DIR and report the path.
 
-    A tiny padding is added around the tight bounding box so that markers,
-    tick labels and annotations near the right/top edges are not clipped.
+    A tiny padding (``pad_inches``) is added around the tight bounding box so
+    that markers, tick labels and annotations near the right/top edges are not
+    clipped. Lower ``pad_inches`` for a tighter crop.
     """
     os.makedirs(IMAGES_DIR, exist_ok=True)
     path = os.path.join(IMAGES_DIR, name)
-    fig.savefig(path, bbox_inches="tight", pad_inches=0.08)
+    fig.savefig(path, bbox_inches="tight", pad_inches=pad_inches)
     print(f"  wrote {os.path.relpath(path, _REPO_ROOT)}")
     return path
+
+
+# ============================================================================
+# Output-naming helper
+# ============================================================================
+# There is a single BTN aggregation mode ("valbest": the per-dataset
+# validation-quality-best BTN family), so figure/table files are always
+# canonical and UNSUFFIXED. `variant_suffix` is retained (returning "") only so
+# existing f-strings in the generators keep working unchanged.
+
+def variant_suffix(variant=None):
+    """Filename suffix (always empty: only one BTN aggregation mode exists)."""
+    return ""
 
 
 # ============================================================================
@@ -233,9 +410,8 @@ def _load_runs(group, dataset, key):
     """Yield the parsed `uncertainty` dict for every available seed run."""
     for md in _model_dirs(group, dataset, key):
         for f in _seed_jsons(md):
-            try:
-                d = json.load(open(f))
-            except Exception:
+            d = load_run_json(f)
+            if d is None:
                 continue
             u = d.get("uncertainty")
             if isinstance(u, dict):
@@ -252,6 +428,31 @@ def scalar_values(group, dataset, key, metric):
     return out
 
 
+# Top-level predictive-quality key (R^2-like; HIGHER is better). It lives at the
+# TOP of each run json (NOT inside the `uncertainty` block), so it needs its own
+# loader below.
+VAL_QUALITY_KEY = "val_quality"
+
+
+def val_quality_values(group, dataset, key):
+    """List of finite per-seed `val_quality` values for one model on one dataset.
+
+    `val_quality` is read from the top level of each run json (it is the
+    validation predictive quality used to choose the winning BTN family; higher
+    is better).
+    """
+    out = []
+    for md in _model_dirs(group, dataset, key):
+        for f in _seed_jsons(md):
+            d = load_run_json(f)
+            if d is None:
+                continue
+            v = d.get(VAL_QUALITY_KEY)
+            if _is_finite(v):
+                out.append(float(v))
+    return out
+
+
 def agg(values):
     """(mean, std, n) for a list, or None if empty."""
     if not values:
@@ -261,10 +462,10 @@ def agg(values):
     return m, s, len(values)
 
 
-# --- Best BTN family selection ----------------------------------------------
+# --- BTN family selection (validation-quality-best, per dataset) ------------
 
 def _score_for_direction(mean, info):
-    """Lower-is-better score so we can pick the 'best' family uniformly."""
+    """Lower-is-better score, used to BOLD the best cell per column in tables."""
     d = info["direction"]
     if d == "min":
         return mean
@@ -275,54 +476,57 @@ def _score_for_direction(mean, info):
     raise ValueError(d)
 
 
-def best_btn_family(dataset, metric):
-    """Return (family, mean, std, n) of the best BTN family for this metric/dataset.
+def valbest_btn_family(dataset):
+    """Return the BTN family with the highest MEAN `val_quality` on `dataset`.
 
-    'Best' is defined by the metric's optimisation direction (METRIC_INFO).
-    Returns None if no BTN family has data here.
+    This is a *metric-independent*, per-dataset choice: for each dataset we pick
+    the single BTN family that predicts best on the validation set, then present
+    THAT family's uncertainty metrics everywhere. Returns the family name, or
+    None if no BTN family has any `val_quality` here.
     """
-    info = METRIC_INFO[metric]
-    best = None
+    best = None  # (mean_val_quality, family)
     for fam in TN_FAMILY_ORDER:
-        a = agg(scalar_values("BTN", dataset, fam, metric))
-        if a is None:
+        vals = val_quality_values("BTN", dataset, fam)
+        if not vals:
             continue
-        mean, std, n = a
-        score = _score_for_direction(mean, info)
-        if best is None or score < best[0]:
-            best = (score, fam, mean, std, n)
-    if best is None:
+        m = statistics.mean(vals)
+        if best is None or m > best[0]:
+            best = (m, fam)
+    return None if best is None else best[1]
+
+
+def valbest_btn_metric(dataset, metric):
+    """(family, mean, std, n) of the val-quality-best BTN family for `metric`.
+
+    The family is fixed per dataset by `valbest_btn_family` (chosen on
+    validation predictive quality, NOT on the uncertainty metric itself); this
+    returns that family's aggregated uncertainty `metric`. Returns None if the
+    chosen family has no data for this metric here.
+    """
+    fam = valbest_btn_family(dataset)
+    if fam is None:
         return None
-    _, fam, mean, std, n = best
+    a = agg(scalar_values("BTN", dataset, fam, metric))
+    if a is None:
+        return None
+    mean, std, n = a
     return fam, mean, std, n
 
 
-def best_btn_family_overall(metric):
-    """Family with the best AVERAGE rank for `metric` across all datasets.
+def btn_rows(dataset, metric):
+    """The single BTN row for a dataset/metric.
 
-    NOTE: All current figures select the best BTN family PER DATASET via
-    `best_btn_family`. This helper is kept for the (optional) case where a single
-    family must be fixed across panels; it is not used by default.
+    Returns a list with 0 or 1 tuple (display_label, key, mean, std, n, family):
+    the BTN family that predicts best on validation (`val_quality`) for this
+    dataset (the family is fixed per dataset, independent of `metric`), reporting
+    that family's uncertainty `metric` as mean +/- std over its seeds. `key` is
+    always "BTN" (drives colour/highlight styling). Missing data -> empty list.
     """
-    info = METRIC_INFO[metric]
-    # rank families per dataset, then average ranks.
-    rank_sums = defaultdict(float)
-    rank_cnts = defaultdict(int)
-    for ds in DATASET_ORDER:
-        scored = []
-        for fam in TN_FAMILY_ORDER:
-            a = agg(scalar_values("BTN", ds, fam, metric))
-            if a is None:
-                continue
-            scored.append((_score_for_direction(a[0], info), fam))
-        scored.sort()
-        for rank, (_, fam) in enumerate(scored):
-            rank_sums[fam] += rank
-            rank_cnts[fam] += 1
-    avg = {f: rank_sums[f] / rank_cnts[f] for f in rank_cnts if rank_cnts[f]}
-    if not avg:
-        return TN_FAMILY_ORDER[0]
-    return min(avg, key=avg.get)
+    vb = valbest_btn_metric(dataset, metric)
+    if vb is None:
+        return []
+    fam, mean, std, n = vb
+    return [(BTN_DISPLAY, "BTN", mean, std, n, fam)]
 
 
 # --- Curve loading -----------------------------------------------------------
@@ -369,21 +573,38 @@ def sparsification_curve(group, dataset, key):
     return _avg_curve(curves, ["fractions", "rmse_by_unc", "rmse_by_oracle"])
 
 
-# --- Convenience: iterate "BTN(best) + each baseline" for a metric -----------
+def btn_curve_series(dataset, metric, curve_field, fields):
+    """BTN curve series: a single-element list [(key, curve, family_tag)].
+
+    The curve is the seed-average of `curve_field` for the val-quality-best BTN
+    family on this dataset (key "BTN", tag = that family name). Empty list if the
+    chosen family has no usable curve here.
+    """
+    fam = valbest_btn_family(dataset)
+    if fam is None:
+        return []
+    c = _avg_curve(
+        [u[curve_field] for u in _load_runs("BTN", dataset, fam)
+         if isinstance(u.get(curve_field), dict)],
+        fields,
+    )
+    return [("BTN", c, fam)] if c is not None else []
+
+
+# --- Convenience: iterate "BTN(val-best) + each baseline" for a metric -------
 
 def models_for_metric(dataset, metric):
-    """Ordered list of (model_key, mean, std, n, extra) for one dataset.
+    """Ordered list of (model_key, mean, std, n, family, label) for one dataset.
 
-    model_key is 'BTN' (best family) or a baseline key. extra holds the chosen
-    BTN family name (or None).
+    The first entry is the val-quality-best BTN family (model_key 'BTN', family
+    = its name); the baselines follow (family = None). `label` is the display
+    name for the row.
     """
     out = []
-    bf = best_btn_family(dataset, metric)
-    if bf is not None:
-        fam, mean, std, n = bf
-        out.append(("BTN", mean, std, n, fam))
+    for label, key, mean, std, n, fam in btn_rows(dataset, metric):
+        out.append((key, mean, std, n, fam, label))
     for b in BASELINE_ORDER:
         a = agg(scalar_values("baseline", dataset, b, metric))
         if a is not None:
-            out.append((b, a[0], a[1], a[2], None))
+            out.append((b, a[0], a[1], a[2], None, display_name(b)))
     return out

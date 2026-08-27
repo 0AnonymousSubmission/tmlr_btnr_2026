@@ -1,5 +1,18 @@
 #!/usr/bin/env python3
 """One-off: compute std(y) (and a few related stats) for each dataset.
+
+Why: the uncertainty `sharpness` metric is the mean predictive std, expressed in
+the *raw units of y* (the pipeline normalizes X but NOT y, see
+core/data.normalize_fold_data). To compare sharpness across datasets with very
+different target scales we normalize it by a data-intrinsic scale, std(y),
+rather than by the across-model median (which is composition-dependent and only
+relative to "however good the other models happen to be").
+
+The targets y are an intrinsic property of the dataset: they do not change with
+seed/fold (only the train/test SPLIT does). So a single std(y) over the full
+target column is the right, stable normalizer. This script computes it once and
+writes paper_script/target_std.csv, which the figures then read.
+
 Run from the repo root (so utils/model imports resolve):
     python paper_script/compute_target_std.py
 """

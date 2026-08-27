@@ -1,90 +1,90 @@
 abalone:
   L: 3
   _meta:
-    mean_val_quality: 0.52769
+    mean_val_quality: 0.532917
     n_seeds: 5
-    std_val_quality: 0.00474
+    std_val_quality: 0.002078
   bond_dim: 64
-  bond_prior_alpha: 5.0
-  init_strength: 0.1
+  bond_prior_alpha: 100.0
+  init_strength: 0.01
 ai4i:
   L: 4
   _meta:
-    mean_val_quality: 0.374687
+    mean_val_quality: 0.382501
     n_seeds: 5
-    std_val_quality: 0.011928
-  bond_dim: 32
-  bond_prior_alpha: 1.0
-  init_strength: 0.01
+    std_val_quality: 0.009699
+  bond_dim: 18
+  bond_prior_alpha: 10.0
+  init_strength: 0.1
 appliances:
   L: 3
   _meta:
-    mean_val_quality: 0.286756
+    mean_val_quality: 0.297498
     n_seeds: 5
-    std_val_quality: 0.014088
+    std_val_quality: 0.013884
   bond_dim: 18
-  bond_prior_alpha: 5.0
+  bond_prior_alpha: 10.0
   init_strength: 0.1
 bike:
   L: 4
   _meta:
-    mean_val_quality: 0.665313
+    mean_val_quality: 0.66326
     n_seeds: 5
-    std_val_quality: 0.002319
-  bond_dim: 12
-  bond_prior_alpha: 1.0
+    std_val_quality: 0.002395
+  bond_dim: 18
+  bond_prior_alpha: 0.01
   init_strength: 0.01
 concrete:
   L: 4
   _meta:
-    mean_val_quality: 0.906522
+    mean_val_quality: 0.922983
     n_seeds: 5
-    std_val_quality: 0.028812
-  bond_dim: 32
-  bond_prior_alpha: 5.0
-  init_strength: 0.1
+    std_val_quality: 0.005846
+  bond_dim: 64
+  bond_prior_alpha: 100.0
+  init_strength: 0.01
 energy_efficiency:
   L: 4
   _meta:
-    mean_val_quality: 0.997915
+    mean_val_quality: 0.997937
     n_seeds: 5
-    std_val_quality: 6.3e-05
-  bond_dim: 64
-  bond_prior_alpha: 1.0
+    std_val_quality: 2.0e-05
+  bond_dim: 18
+  bond_prior_alpha: 0.1
   init_strength: 0.01
 obesity:
-  L: 3
+  L: 4
   _meta:
-    mean_val_quality: 0.687587
+    mean_val_quality: 0.697628
     n_seeds: 5
-    std_val_quality: 0.004536
-  bond_dim: 64
-  bond_prior_alpha: 5.0
-  init_strength: 0.1
+    std_val_quality: 0.009625
+  bond_dim: 32
+  bond_prior_alpha: 100.0
+  init_strength: 0.01
 realstate:
   L: 3
   _meta:
-    mean_val_quality: 0.565498
+    mean_val_quality: 0.579406
     n_seeds: 5
-    std_val_quality: 0.029718
-  bond_dim: 32
-  bond_prior_alpha: 5.0
-  init_strength: 0.1
+    std_val_quality: 0.006318
+  bond_dim: 18
+  bond_prior_alpha: 100.0
+  init_strength: 0.01
 seoulBike:
   L: 3
   _meta:
-    mean_val_quality: 0.616137
+    mean_val_quality: 0.137955
     n_seeds: 5
-    std_val_quality: 0.045771
-  bond_dim: 6
-  bond_prior_alpha: 5.0
+    std_val_quality: 0.311909
+  bond_dim: 18
+  bond_prior_alpha: 10.0
   init_strength: 0.1
 student_perf:
   L: 3
   _meta:
-    mean_val_quality: 0.043894
+    mean_val_quality: 0.105397
     n_seeds: 5
-    std_val_quality: 0.058018
+    std_val_quality: 0.041746
   bond_dim: 64
-  bond_prior_alpha: 5.0
+  bond_prior_alpha: 10.0
   init_strength: 0.1

@@ -8,6 +8,22 @@ method:
   trimming_threshold: 0.1
   trim_method: relevance
   soft_trim_relaxation: 1
+  # If false (default), bonds touching a non-trainable ('NT') node are never
+  # trimmed, protecting fixed blocks (e.g. an Identity/mask) from being shrunk.
+  # If true, such bonds may be trimmed and the NT node is co-sliced.
+  trim_nt_nodes: false
+  # If false (default), input (feature) legs are never trimmed. If true, input
+  # legs become trim candidates and the matching feature columns are dropped
+  # from every data stream (Bayesian feature selection). An input leg trimmed to
+  # zero is fully detached (feature removed).
+  trim_input: false
+  # If false (default), at least one input leg is always kept (the last input is
+  # protected). If true, even the last input may be removed (constant model).
+  allow_empty_input: false
+  # If true (default), an internal bond trimmed to dimension 1 is squeezed out of
+  # both connected nodes (lossless: predictions unchanged). If false, size-1
+  # internal bonds are kept.
+  remove_trivial_bonds: true
 
 dataset:
   added_bias: true
