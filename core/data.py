@@ -1,27 +1,27 @@
-# type: ignore
-import torch
 import numpy as np
-from typing import Dict, List, Tuple
-from sklearn.model_selection import KFold
+import torch
 from omegaconf import DictConfig
+from sklearn.model_selection import KFold
 
-from utils.dataset_loader import load_dataset, append_bias
-from utils.device_utils import move_data_to_device
-from tensor.builder import Inputs
+from model.load_ucirepo import (
+    DATASETS_WITH_TARGET_FIX,
+    one_hot_with_cap,
+)
 from model.load_ucirepo import (
     datasets as uci_datasets,
-    one_hot_with_cap,
-    DATASETS_WITH_TARGET_FIX,
 )
+from tensor.builder import Inputs
+from utils.dataset_loader import load_dataset
+from utils.device_utils import move_data_to_device
 
 _DATA_CACHE = {}
 
 
 def load_full_dataset_for_kfold(
     dataset_name: str, cap: int = 50
-) -> Tuple[torch.Tensor, torch.Tensor, dict]:
-    from ucimlrepo import fetch_ucirepo
+) -> tuple[torch.Tensor, torch.Tensor, dict]:
     import pandas as pd
+    from ucimlrepo import fetch_ucirepo
 
     dataset_map = {name: (dataset_id, task) for name, dataset_id, task in uci_datasets}
     if dataset_name not in dataset_map:
@@ -73,7 +73,7 @@ def prepare_fold_data(
     train_idx: np.ndarray,
     test_idx: np.ndarray,
     val_ratio: float = 0.15,
-) -> Dict:
+) -> dict:
     n_val = int(len(train_idx) * val_ratio)
     rng = np.random.default_rng(42)
     shuffled = train_idx.copy()
@@ -89,7 +89,7 @@ def prepare_fold_data(
     }
 
 
-def normalize_fold_data(data: Dict, orig_num_cols: List, n_features: int) -> Dict:
+def normalize_fold_data(data: dict, orig_num_cols: list, n_features: int) -> dict:
     n_numeric = len(orig_num_cols) if orig_num_cols else n_features
     if n_numeric <= 0:
         return data
@@ -111,7 +111,7 @@ def normalize_fold_data(data: Dict, orig_num_cols: List, n_features: int) -> Dic
     return data
 
 
-def create_data_loaders(data: Dict, input_dims, output_dims, batch_size: int):
+def create_data_loaders(data: dict, input_dims, output_dims, batch_size: int):
     def make_loader(X, y, bs):
         y_squeezed = y.squeeze(-1) if not output_dims else y
         return Inputs(

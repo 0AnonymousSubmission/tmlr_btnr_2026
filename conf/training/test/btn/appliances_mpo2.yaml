@@ -1,6 +1,6 @@
 # @package _global_
 # Auto-generated test config for BTN MPO2 on appliances
-# Best config from ablation: L=3, prior=1.0, init=0.01, bond_dim=18
+# Best config from ablation: L=4, prior=1.0, init=0.01, bond_dim=18
 
 defaults:
   - /training/test/_base_uncertainty
@@ -9,5 +9,5 @@ method:
   bond_prior_alpha: 1.0
 
 model:
-  L: 3
+  L: 4
   init_strength: 0.01

@@ -1,5 +1,14 @@
 #!/usr/bin/env python3
 """Generate LaTeX tables of headline uncertainty metrics.
+
+One table per metric (NLL, CRPS, ECE), datasets as columns, models as rows:
+BTN (the family with the best validation predictive quality per dataset)
+followed by each baseline. Mean +- std over seeds. The best value per dataset
+column is bolded according to the metric's optimisation direction
+(lower / higher / closest-to-target).
+
+Style matches paper_script/make_r2_table.py (shortstack cells, resizebox).
+
 Outputs (into paper_script/tables/):
   unc_nll_table.tex, unc_crps_table.tex, unc_ece_table.tex
 """
@@ -21,23 +30,27 @@ BLOCK_RULE = r"\midrule\midrule"
 # paper's table style (no font scaling); enable only if a table overflows.
 RESIZE_TO_TEXTWIDTH = True
 
-CAPTIONS = {
-    "unc_nll":  r"Test negative log-likelihood (NLL) (lower is better), mean \(\pm\) std. Best per dataset in bold.",
-    "unc_crps": r"Test continuous ranked probability score (CRPS) (lower is better), mean \(\pm\) std. Best per dataset in bold.",
-    "unc_ece":  r"Expected calibration error (ECE) (lower is better), mean \(\pm\) std. Best per dataset in bold.",
-}
+# Captions are read verbatim from captions/<metric>_caption.tex.
+# TRAILING_PERCENT: whether the target emits \caption{...}% (True) or {...} (False).
+CAPTION_TRAILING_PERCENT = {"unc_nll": True, "unc_crps": False, "unc_ece": True}
 LABELS = {"unc_nll": "tab:nll", "unc_crps": "tab:crps", "unc_ece": "tab:ece"}
+
+
+def _btn_row(metric):
+    """The single BTN block row (val-quality-best family per dataset).
+
+    Returns list of (block, label, {dataset: (mean,std) or None}).
+    """
+    cells = {}
+    for ds in C.DATASET_ORDER:
+        r = C.btn_rows(ds, metric)
+        cells[ds] = (r[0][2], r[0][3]) if r else None
+    return [("BTN", C.BTN_DISPLAY, cells)]
 
 
 def build_rows(metric):
     """rows: list of (block, label, {dataset: (mean,std) or None})."""
-    rows = []
-    # BTN row (best family per dataset)
-    btn_cells = {}
-    for ds in C.DATASET_ORDER:
-        bf = C.best_btn_family(ds, metric)
-        btn_cells[ds] = (bf[1], bf[2]) if bf else None
-    rows.append(("BTN", C.BTN_DISPLAY, btn_cells))
+    rows = list(_btn_row(metric))
     # baseline rows
     for b in C.BASELINE_ORDER:
         cells = {}
@@ -94,18 +107,19 @@ def format_table(metric):
     if RESIZE_TO_TEXTWIDTH:
         body = "\\resizebox{\\textwidth}{!}{%\n" + body + "\n}"
 
+    label = LABELS[metric]
     wrapped = [r"\begin{table}[t]", r"\centering",
-               r"\caption{" + CAPTIONS[metric] + "}",
-               r"\label{" + LABELS[metric] + "}", body, r"\end{table}"]
+               C.caption(metric, trailing_percent=CAPTION_TRAILING_PERCENT[metric]),
+               r"\label{" + label + "}", body, r"\end{table}"]
     return "\n".join(wrapped)
 
 
-def main():
+def main(variant=None):
     os.makedirs(C.TABLES_DIR, exist_ok=True)
-    print("Uncertainty tables:")
+    print("Uncertainty tables: [valbest]")
     for m in TABLE_METRICS:
         tex = format_table(m)
-        path = os.path.join(C.TABLES_DIR, m + "_table.tex")
+        path = os.path.join(C.TABLES_DIR, f"{m}_table.tex")
         with open(path, "w") as f:
             f.write(tex + "\n")
         print(f"  wrote {os.path.relpath(path, C._REPO_ROOT)}")

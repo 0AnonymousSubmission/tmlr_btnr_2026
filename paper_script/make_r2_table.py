@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
 """Generate a LaTeX table of test R^2 (x100) at minimum validation loss.
+
+Rows are grouped into three blocks (BTN, ALS, baseline), separated by a double
+midrule. Columns are datasets. Missing model x dataset combinations show "-".
+The best (highest) mean value per dataset column is bolded.
+
+All naming / style / behaviour choices are controlled by the variables in the
+CONFIG section at the top of this file.
 """
 
 import os
@@ -7,6 +14,10 @@ import glob
 import json
 import math
 import statistics
+
+# Robust JSON loader (repairs the known '--' number corruption in memory,
+# without ever modifying the pristine run files on disk) + external caption loader.
+from unc_common import load_run_json, caption
 
 # ============================================================================
 # CONFIG  (edit everything here)
@@ -57,17 +68,24 @@ DATASET_DISPLAY = {
 # --- Model families (rows) ---------------------------------------------------
 # BTN / ALS rows keyed by the family prefix found in the run directory name
 # (e.g. "CPD_L3_d64" -> "CPD"). Display name added as a per-group prefix below.
-TN_FAMILY_ORDER = ["CPD", "LMPO2", "MPO2", "BTT"]
+TN_FAMILY_ORDER = ["CPD", "LMPO2", "MPO2", "BTT", "TR"]
 TN_FAMILY_DISPLAY = {
     "CPD": "CPD",
     "LMPO2": "LMPO2",
-    "MPO2": "MPO2",
+    "MPO2": "MPS",
     "BTT": "BTT",
+    "TR": "TR",
 }
 # Row-name prefix per group, e.g. BTN-CPD, A-CPD.
 GROUP_ROW_PREFIX = {
     "BTN": "B-",
     "ALS": "A-",
+}
+# Collapsed-table row label per TN group: all families in a group are merged
+# into one row, keeping the best (highest-mean) family per dataset.
+GROUP_COLLAPSE_LABEL = {
+    "BTN": "BTNR",
+    "ALS": "ALS",
 }
 
 # Baseline rows. Each row has a short acronym (<= 5 letters) and a list of
@@ -122,17 +140,23 @@ ROW_LABEL_COLSPEC = "l"
 RESIZE_TO_TEXTWIDTH = False  # wrap tabular in \resizebox{\textwidth}{!}{...}
 COLUMN_SEP = None            # e.g. "3pt" to shrink \tabcolsep; None = leave default
 
-# Caption: empty string -> no caption (tabular emitted bare).
-# Non-empty -> wrap in a `table` environment with \caption (+ optional \label).
-CAPTION = (
-    r"Test $R^2$ ($\times 100$) at minimum validation loss, reported as mean \(\pm\) std over seeds. Best result per dataset in bold, -- marks unavailable runs."
-)
+# Caption: False -> no caption (tabular emitted bare). True -> wrap in a
+# `table` environment with \caption (+ optional \label). The caption text lives
+# in captions/<CAPTION_NAME>_caption.tex and is loaded verbatim.
+CAPTION = True
+CAPTION_NAME = "r2"          # -> captions/r2_caption.tex
+CAPTION_TRAILING_PERCENT = True   # target emits \caption{...}%
 LABEL = "tab:r2"             # e.g. "tab:r2"; ignored when empty
 TABLE_POSITION = "t"         # float placement specifier, e.g. "t", "h", "htbp"
 
 # Output
+# Main table used by the paper: every TN family as its own row (B-CPD, A-CPD,
+# ...). This is what tables/r2_table.tex must contain.
 OUTPUT_PATH = os.path.join(_SCRIPT_DIR, "tables", "r2_table.tex")
-PRINT_TO_STDOUT = True
+# Collapsed variant: all B- families merged into one BTNR row, all A- families
+# merged into one ALS row (best family per dataset), baselines kept as-is.
+OUTPUT_PATH_COLLAPSED = os.path.join(_SCRIPT_DIR, "tables", "r2_table_collapsed.tex")
+PRINT_TO_STDOUT = False
 
 
 # ============================================================================
@@ -197,9 +221,8 @@ def collect_values(group, dataset, family):
     values = []
     for md in model_dirs:
         for f in _seed_json_files(md):
-            try:
-                d = json.load(open(f))
-            except Exception:
+            d = load_run_json(f)
+            if d is None:
                 continue
             v = extractor(d)
             if v is not None:
@@ -241,6 +264,49 @@ def build_rows():
                     present = True
             if present:  # skip entirely-missing rows
                 rows.append((group, label, cells))
+    return rows
+
+
+def build_collapsed_rows():
+    """Like build_rows(), but merge all TN families of a group into one row.
+
+    For each TN group (BTN, ALS) and each dataset, keep the (mean, std) of the
+    family with the highest mean R^2. Baseline rows are emitted unchanged.
+    """
+    rows = []
+    for group in GROUP_ORDER:
+        if group == "baseline":
+            for fam in BASELINE_ORDER:
+                cells = {}
+                present = False
+                for ds in DATASET_ORDER:
+                    vals = collect_values(group, ds, fam)
+                    agg = aggregate(vals) if vals is not None else None
+                    cells[ds] = agg
+                    if agg is not None:
+                        present = True
+                if present:
+                    rows.append((group, BASELINE_DISPLAY[fam], cells))
+            continue
+
+        # TN group: pick, per dataset, the family with the highest mean.
+        label = GROUP_COLLAPSE_LABEL[group]
+        cells = {}
+        present = False
+        for ds in DATASET_ORDER:
+            best_agg = None
+            for fam in TN_FAMILY_ORDER:
+                vals = collect_values(group, ds, fam)
+                agg = aggregate(vals) if vals is not None else None
+                if agg is None:
+                    continue
+                if best_agg is None or agg[0] > best_agg[0]:
+                    best_agg = agg
+            cells[ds] = best_agg
+            if best_agg is not None:
+                present = True
+        if present:
+            rows.append((group, label, cells))
     return rows
 
 
@@ -301,7 +367,7 @@ def format_table(rows):
 
     if CAPTION:
         wrapped = [r"\begin{table}[" + TABLE_POSITION + "]", r"\centering",
-                   r"\caption{" + CAPTION + "}"]
+                   caption(CAPTION_NAME, trailing_percent=CAPTION_TRAILING_PERCENT)]
         if LABEL:
             wrapped.append(r"\label{" + LABEL + "}")
         wrapped.append(body)
@@ -310,15 +376,22 @@ def format_table(rows):
     return body
 
 
-def main():
-    rows = build_rows()
-    table = format_table(rows)
+def main(variant=None):
+    # variant is accepted for a uniform driver interface but unused: the R2
+    # table does not depend on the BTN aggregation variant.
     os.makedirs(os.path.dirname(OUTPUT_PATH), exist_ok=True)
+
+    # Main table (used by the paper): every TN family as its own row.
+    full_rows = build_rows()
+    full_table = format_table(full_rows)
     with open(OUTPUT_PATH, "w") as f:
-        f.write(table + "\n")
+        f.write(full_table + "\n")
+
     if PRINT_TO_STDOUT:
-        print(table)
+        print(full_table)
+
     print(f"\n% written to {OUTPUT_PATH}", flush=True)
+    # print(f"% written to {OUTPUT_PATH_COLLAPSED}", flush=True)
 
 
 if __name__ == "__main__":

@@ -1,24 +1,23 @@
-# type: ignore
 import time
+
 import torch
-from typing import Dict
 from omegaconf import DictConfig
 
-from utils.dataset_loader import append_bias
-from utils.device_utils import DEVICE, move_tn_to_device
-from tensor.btn import BTN
-from tensor.tn_als import TNALS
-from model.utils import REGRESSION_METRICS
 from core.data import create_data_loaders
-from core.models import create_model, count_parameters
 from core.metrics import (
-    safe_float,
-    extract_loss,
+    compute_quality,
     extract_bond_dims,
     extract_btn_metrics,
-    compute_quality,
+    extract_loss,
+    safe_float,
 )
+from core.models import count_parameters, create_model
 from core.uncertainty import compute_uncertainty_metrics
+from model.utils import REGRESSION_METRICS
+from tensor.btn import BTN
+from tensor.tn_als import TNALS
+from utils.dataset_loader import append_bias
+from utils.device_utils import DEVICE, move_tn_to_device
 
 
 def get_device(cfg: DictConfig) -> torch.device:
@@ -87,7 +86,7 @@ def build_singular_result(cfg, seed, fold, error):
 @torch.inference_mode()
 def run_tn_experiment(
     cfg: DictConfig,
-    data: Dict,
+    data: dict,
     seed: int,
     verbose: bool = False,
     tracker=None,
@@ -122,6 +121,10 @@ def run_tn_experiment(
                 method="cholesky",
                 device=device,
                 bond_prior_alpha=cfg.method.bond_prior_alpha,
+                trim_nt_nodes=cfg.method.get("trim_nt_nodes", False),
+                trim_input=cfg.method.get("trim_input", False),
+                allow_empty_input=cfg.method.get("allow_empty_input", False),
+                remove_trivial_bonds=cfg.method.get("remove_trivial_bonds", True),
             )
             tn.threshold = cfg.method.trimming_threshold
         else:
@@ -172,7 +175,7 @@ def run_tn_experiment(
         best_test_quality = None
         best_test_loss = None
         best_epoch = -1
-        best_model_state = None
+        best_model = None
         stopped_early = False
         patience_counter = 0
         soft_trim_started_epoch = None
@@ -190,7 +193,9 @@ def run_tn_experiment(
 
                 if epoch >= warmup_epochs:
                     excluded_bonds = tn.get_soft_trim_excluded_bonds()
-                    for bond_tag in bonds:
+                    # Refresh from the live network: trimming (e.g. a detached
+                    # input leg) can remove bonds between epochs.
+                    for bond_tag in [b for b in tn.mu.ind_map if b not in excluded]:
                         if bond_tag not in excluded_bonds:
                             tn.update_bond(bond_tag)
 
@@ -245,10 +250,11 @@ def run_tn_experiment(
                 best_test_loss = test_loss
                 best_epoch = epoch
                 patience_counter = 0
-                if method == "ALS":
-                    best_model_state = {
-                        tag: tn.mu[tag].data.clone() for tag in tn.mu.tag_map.keys()
-                    }
+                # Snapshot the best-validation model as a full deep clone of the
+                # model object. This captures the exact topology at the best
+                # epoch (robust to any later trimming/detachment that changes
+                # node shapes or the bond set), so restore is a plain swap.
+                best_model = tn.copy()
             else:
                 patience_counter += 1
 
@@ -288,9 +294,14 @@ def run_tn_experiment(
                 stopped_early = True
                 break
 
-        if method == "ALS" and best_model_state:
-            for tag, tensor_data in best_model_state.items():
-                tn.mu[tag].modify(data=tensor_data)
+        if best_model is not None:
+            # Restore the best-epoch model by swapping in the deep clone.
+            tn = best_model
+
+            # Any cached environments/forwards must be invalidated so downstream
+            # metrics/uncertainty recompute against the restored best state.
+            if hasattr(tn, "_clear_cache"):
+                tn._clear_cache()
 
         test_scores = tn.evaluate(REGRESSION_METRICS, data_stream=test_loader)
         test_quality = compute_quality(test_scores)
@@ -379,6 +390,7 @@ def run_tn_experiment(
                     "elbo_raw": final_metrics["elbo_raw"],
                     "elbo_relative": final_metrics["elbo_relative"],
                     "tau_mean": final_metrics["tau_mean"],
+                    "inv_tau_mean": final_metrics["inv_tau_mean"],
                     "bond_mean_avg": final_metrics["bond_mean_avg"],
                 }
             )

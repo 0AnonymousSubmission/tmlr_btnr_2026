@@ -1,16 +1,17 @@
-# type: ignore
+import copy
+from typing import Any
+
+import numpy as np
+import quimb.tensor as qt
 import torch
 import torch.distributions as dist
-import quimb.tensor as qt
-import numpy as np
-from typing import List, Union, Optional, Any
-torch.set_default_dtype(torch.float32)   # or torch.float64
+
+torch.set_default_dtype(torch.float32)
 
 
 def _extract_data(param: Any, dtype=torch.float64) -> torch.Tensor:
     """Helper to extract torch tensor data from potential quimb.Tensor."""
     if isinstance(param, qt.Tensor):
-        # We assume the data inside quimb tensor might already be torch or numpy
         data = param.data
         if isinstance(data, np.ndarray):
             return torch.tensor(data, dtype=dtype)
@@ -31,7 +32,6 @@ def _wrap_if_quimb(data: torch.Tensor, reference: Any, backend: str) -> Any:
     """
     data = to_backend(data, backend)
     if isinstance(reference, qt.Tensor):
-        # We store the torch tensor (potentially with grads) directly in the quimb tensor data
         return qt.Tensor(data=data, inds=reference.inds, tags=reference.tags)
     return data
 
@@ -91,6 +91,19 @@ class GammaDistribution:
             res = res.data
         return _wrap_if_quimb(res, self.concentration, self.backend)
 
+    def inv_mean(self):
+        """
+        Returns E[1/X] = beta / (alpha - 1) for X ~ Gamma(alpha, beta)
+        (the inverse-gamma mean, valid for alpha > 1).
+        If inputs are quimb.Tensors, returns a quimb.Tensor with the same bond indices.
+        """
+        c_data = _extract_data(self.concentration)
+        r_data = _extract_data(self.rate)
+        res = r_data/ (c_data - 1)
+        if isinstance(res, qt.Tensor):
+            res = res.data
+        return _wrap_if_quimb(res, self.concentration, self.backend)
+
     def trim(self, indices):
         """
         Keeps only the specified indices of the parameters.
@@ -98,22 +111,25 @@ class GammaDistribution:
             indices: List or array of integers to keep.
         """
         def _slice_param(param, idxs):
-            # Case A: It is a quimb.Tensor
             if hasattr(param, 'modify'): 
-                # Slice the underlying data directly
-                # We assume param is 1D (vector of weights), so slicing axis 0 is correct.
                 new_data = param.data[idxs]
                 param.modify(data=new_data)
                 return param
-            # Case B: It is a raw Torch/NumPy tensor
             else:
                 return param[idxs]
 
         self.concentration = _slice_param(self.concentration, indices)
         self.rate = _slice_param(self.rate, indices)
         
-        # Reset the cached distribution so it regenerates with new shape next time
         self._distribution = None
+
+    def copy(self):
+        new = GammaDistribution(
+            copy.deepcopy(self.concentration),
+            copy.deepcopy(self.rate),
+            backend=self.backend,
+        )
+        return new
 
     def to(self, device):
         def _move(param):
@@ -139,6 +155,7 @@ class MultivariateGaussianDistribution:
         self.loc = loc
         self.covariance_matrix = covariance_matrix
         self.scale_tril = scale_tril
+        self.backend = backend
         self._distribution = None
     
     def update_parameters(self, loc=None, covariance_matrix=None, scale_tril=None):
@@ -184,7 +201,7 @@ class MultivariateGaussianDistribution:
         if loc is None:
             loc = self.loc.data
         return dist.MultivariateNormal(loc=loc, covariance_matrix=cov)
-    
+
     def mean(self):
         """Returns the mean. If loc is a quimb.Tensor, returns it directly."""
         return self.loc

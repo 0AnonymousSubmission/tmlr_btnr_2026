@@ -1,5 +1,21 @@
 #!/usr/bin/env python3
 """Figure 1 -- Reliability diagrams (calibration).
+
+Reads the per-run ``reliability_curve`` (expected vs observed quantile
+coverage), averages over seeds, and plots observed vs expected. The diagonal
+y=x is "perfectly calibrated"; curves below the diagonal are over-confident,
+above are under-confident.
+
+Outputs (PDF, into images/uncertainty/):
+  * reliability_grid.pdf  -- 2x5 small multiples, one panel per dataset,
+                             BTN (best family) vs every baseline.
+  * reliability_main.pdf  -- single clean headline panel (one dataset),
+                             for the main text.
+
+The "immediate read" design choices:
+  * shaded +-std band so seed variability is visible at a glance;
+  * BTN drawn thick + red + on top, baselines thin;
+  * the y=x reference is a light grey dashed line and labelled once.
 """
 
 import numpy as np
@@ -11,21 +27,28 @@ MAIN_DATASET = "concrete"          # dataset shown in the single headline panel
 SHOW_BAND = True                   # shaded +-std band around each curve
 GRID_COLS = 5
 
+# ---- LAYOUT / TIGHTNESS KNOBS ----------------------------------------------
+# Tweak these to control how tight the grid figure is. Smaller pad = tighter.
+PANEL_W = 2.1                # width  (inches) per small-multiple panel
+PANEL_H = 2.3                # height (inches) per small-multiple panel
+GRID_WPAD = 0.02             # horizontal padding between panels (inches)
+GRID_HPAD = 0.06             # vertical padding between panels (inches)
+SAVE_PAD_INCHES = 0.02       # extra border kept by the final tight-bbox crop
+
 
 def _plot_one(ax, dataset, legend=False):
     plt = C._plt
     ax.plot([0, 1], [0, 1], ls="--", lw=C.STYLE["ref_lw"], color="0.6",
             label="Perfect" if legend else None, zorder=1)
 
-    # Best BTN family is chosen PER DATASET for this metric.
-    bf = C.best_btn_family(dataset, METRIC)
-    btn_family = bf[0] if bf else None
-
     series = []  # (key, curve)
-    if btn_family is not None:
-        rc = C.reliability_curve("BTN", dataset, btn_family)
-        if rc is not None:
-            series.append(("BTN", rc))
+    fam_tags = []
+    for key, rc, fam in C.btn_curve_series(dataset, METRIC,
+                                           "reliability_curve",
+                                           ["expected", "observed"]):
+        series.append((key, rc))
+        if fam:
+            fam_tags.append(C.family_display(fam))
     for b in C.BASELINE_ORDER:
         rc = C.reliability_curve("baseline", dataset, b)
         if rc is not None:
@@ -48,8 +71,8 @@ def _plot_one(ax, dataset, legend=False):
     ax.set_aspect("equal")
     ax.set_xticks([0, 0.5, 1.0])
     ax.set_yticks([0, 0.5, 1.0])
-    # title names the per-dataset BTN family so the choice is transparent.
-    fam_tag = f"  ({C.family_display(btn_family)})" if btn_family else ""
+    # title names the per-dataset BTN family/families so the choice is transparent.
+    fam_tag = ("  (" + ", ".join(fam_tags) + ")") if fam_tags else ""
     ax.set_title(C.DATASET_DISPLAY[dataset] + fam_tag, fontsize=10)
 
 
@@ -57,23 +80,24 @@ def make_grid():
     plt = C._plt
     n = len(C.DATASET_ORDER)
     rows = int(np.ceil(n / GRID_COLS))
-    fig, axes = plt.subplots(rows, GRID_COLS, figsize=(2.1 * GRID_COLS, 2.3 * rows))
+    fig, axes = plt.subplots(rows, GRID_COLS,
+                             figsize=(PANEL_W * GRID_COLS, PANEL_H * rows),
+                             layout="constrained")
+    fig.get_layout_engine().set(w_pad=GRID_WPAD, h_pad=GRID_HPAD,
+                                wspace=0, hspace=0)
     axes = np.atleast_1d(axes).ravel()
     for i, ds in enumerate(C.DATASET_ORDER):
         _plot_one(axes[i], ds, legend=(i == 0))
     for j in range(n, len(axes)):
         axes[j].axis("off")
 
-    # shared axis labels
-    fig.supxlabel("Expected confidence level", y=0.02)
-    fig.supylabel("Observed coverage", x=0.02)
-
     handles, labels = axes[0].get_legend_handles_labels()
-    fig.legend(handles, labels, loc="lower center", ncol=len(labels),
-               bbox_to_anchor=(0.5, -0.04))
-    fig.suptitle("Calibration reliability diagrams", y=1.00, fontsize=12)
-    fig.tight_layout(rect=(0.03, 0.04, 1, 0.98))
-    C.savefig(fig, "reliability_grid.pdf")
+    C.finalize_grid(fig,
+                    supxlabel="Expected confidence level",
+                    supylabel="Observed coverage",
+                    suptitle="Calibration reliability diagrams",
+                    handles=handles, labels=labels)
+    C.savefig(fig, "reliability_grid.pdf", pad_inches=SAVE_PAD_INCHES)
     plt.close(fig)
 
 
@@ -89,9 +113,9 @@ def make_main():
     plt.close(fig)
 
 
-def main():
+def main(variant=None):
     C._plt = C.apply_style()
-    print("Figure 1: reliability diagrams")
+    print("Figure 1: reliability diagrams [valbest]")
     make_grid()
     make_main()
 

@@ -1,13 +1,15 @@
-from model.MPO2_models import MPO2, LMPO2, CMPO2, MMPO2, TR
-from model.BTT_models import BTT
-from model.CPD_models import CPD
+"""
+    Models live one per file under model/models/
+"""
+from model.models import (
+    BTT,
+    CMPO2,
+    CPD,
+    LMPO2,
+    MMPO2,
+    MODELS,
+    MPO2,
+    TR,
+)
 
-MODELS = {
-    "MPO2": MPO2,
-    "LMPO2": LMPO2,
-    "CMPO2": CMPO2,
-    "MMPO2": MMPO2,
-    "TR": TR,
-    "BTT": BTT,
-    "CPD": CPD,
-}
+__all__ = ["BTT", "CMPO2", "CPD", "LMPO2", "MMPO2", "MODELS", "MPO2", "TR"]

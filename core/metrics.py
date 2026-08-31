@@ -1,7 +1,7 @@
-# type: ignore
 import math
-import torch
+
 import quimb.tensor as qt
+import torch
 
 from model.utils import compute_quality as _compute_quality
 
@@ -64,6 +64,16 @@ def extract_btn_metrics(btn) -> dict:
         )
     except:
         metrics["tau_mean"] = 0.0
+
+    try:
+        inv_tau_mean = btn.q_tau.inv_mean()
+        if isinstance(inv_tau_mean, qt.Tensor):
+            inv_tau_mean = inv_tau_mean.data
+        metrics["inv_tau_mean"] = float(
+            inv_tau_mean.item() if torch.is_tensor(inv_tau_mean) else inv_tau_mean
+        )
+    except:
+        metrics["inv_tau_mean"] = 0.0
 
     try:
         from core.models import count_parameters

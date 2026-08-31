@@ -1,4 +1,3 @@
-# type: ignore
 """
 Uncertainty-quality metrics for probabilistic regression.
 
@@ -9,18 +8,10 @@ All functions operate on 1D torch tensors of equal length:
 
 They assume a Gaussian predictive distribution  y ~ N(mean, var), which is the
 observation model used throughout this codebase (see NLL in baselines/base.py).
-
-These metrics answer three questions that R2/RMSE cannot:
-  (A) Calibration  - is the predicted sigma the right *size*?   -> ECE, PICP, MPIW
-  (B) Discrimination - does sigma *rise where error is large*?  -> AUSE, err/unc corr
-  (C) Outlier detection - can sigma/NLL flag corrupted targets? -> AUROC / AUPR
-
-Everything here is pure-tensor and model-agnostic: feed it BTN predictions or
-baseline predictions alike.  ALS (non-Bayesian) has no predictive variance and
-is intentionally not evaluated with these.
 """
 
 import math
+
 import torch
 
 from utils.device_utils import DEVICE
@@ -42,9 +33,6 @@ def _standard_normal_pdf(z: torch.Tensor) -> torch.Tensor:
     return torch.exp(-0.5 * z * z) / _SQRT2PI
 
 
-# ---------------------------------------------------------------------------
-# (0) Probabilistic accuracy
-# ---------------------------------------------------------------------------
 def gaussian_nll(y, mean, var) -> float:
     """Mean negative log-likelihood under N(mean, var). Lower is better."""
     y, mean, var = _flatten(y), _flatten(mean), _flatten(var).clamp_min(_EPS)
@@ -66,9 +54,6 @@ def gaussian_crps(y, mean, var) -> float:
     return float(crps.mean())
 
 
-# ---------------------------------------------------------------------------
-# (A) Calibration
-# ---------------------------------------------------------------------------
 def calibration_error(y, mean, var, n_bins: int = 10):
     """
     Regression calibration (Kuleshov et al. 2018).
@@ -124,9 +109,6 @@ def interval_metrics(y, mean, var, confidence: float = 0.95):
     }
 
 
-# ---------------------------------------------------------------------------
-# (B) Discrimination: does uncertainty track error?
-# ---------------------------------------------------------------------------
 def sparsification(y, mean, var, n_steps: int = 20):
     """
     Sparsification / error-retention curve and AUSE.
@@ -188,11 +170,8 @@ def _spearman(a: torch.Tensor, b: torch.Tensor) -> float:
     return float((ra @ rb) / denom)
 
 
-# ---------------------------------------------------------------------------
-# (C) Outlier / OOD detection via uncertainty
-# ---------------------------------------------------------------------------
 def _auroc(scores: torch.Tensor, labels: torch.Tensor) -> float:
-    """AUROC where higher score => more likely positive (label==1). Rank-based."""
+    """AUROC where higher score => more likely positive"""
     scores, labels = _flatten(scores), _flatten(labels)
     n_pos = float((labels == 1).sum())
     n_neg = float((labels == 0).sum())
@@ -272,9 +251,6 @@ def label_outlier_detection(y, mean, var, corrupt_fraction=0.1,
     }
 
 
-# ---------------------------------------------------------------------------
-# Top-level convenience
-# ---------------------------------------------------------------------------
 def compute_uncertainty_metrics(y, mean, var, *, confidence=0.95,
                                 run_outlier=True, outlier_fraction=0.1,
                                 outlier_scale=5.0, seed=0,

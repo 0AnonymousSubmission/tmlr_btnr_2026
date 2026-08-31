@@ -38,6 +38,33 @@ def get_experiment_runner(method_name: str):
 
 
 @hydra.main(version_base=None, config_path="conf", config_name="config")
+def sanity_check_main(cfg: DictConfig) -> None:
+    """
+    Entrypoint for ``python run.py --sanity-check model=... [overrides]``.
+
+    Builds the requested model via the normal path and runs the sanity-check
+    suite (training, trimming, NT blocks, input detach, bond removal, ELBO
+    monotonicity, gamma >= 0, copy() independence). Exits non-zero on failure.
+    """
+    import sys
+    from core.models import create_model
+    from code_sanity_checks import run_sanity_checks
+
+    n_features = int(cfg.get("sanity_n_features", 6))
+
+    def model_factory(nf):
+        return create_model(cfg, nf)
+
+    ok = run_sanity_checks(
+        model_factory,
+        n_features=n_features,
+        model_name=cfg.model.name,
+        seed=int(cfg.seed),
+    )
+    sys.exit(0 if ok else 1)
+
+
+@hydra.main(version_base=None, config_path="conf", config_name="config")
 def main(cfg: DictConfig) -> None:
     hydra_run_dir = Path(hydra.core.hydra_config.HydraConfig.get().runtime.output_dir)
     final_results_dir = Path(hydra.utils.to_absolute_path(cfg.output.results_dir))
@@ -119,4 +146,11 @@ def main(cfg: DictConfig) -> None:
 
 
 if __name__ == "__main__":
-    main()
+    import sys
+
+    if "--sanity-check" in sys.argv:
+        # Strip the flag so Hydra only sees its own overrides (model=..., etc.).
+        sys.argv = [a for a in sys.argv if a != "--sanity-check"]
+        sanity_check_main()
+    else:
+        main()

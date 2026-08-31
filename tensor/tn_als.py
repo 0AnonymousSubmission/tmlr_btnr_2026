@@ -1,11 +1,11 @@
-# type: ignore
-import torch.distributions as dist
-from torch.distributions import kl_divergence
+import copy as _copy
 import importlib
-from typing import List, Dict, Optional, Tuple
-import quimb.tensor as qt
+
 import numpy as np
+import quimb.tensor as qt
 import torch
+import torch.distributions as dist
+
 from tensor.builder import BTNBuilder, Inputs
 from tensor.distributions import GammaDistribution
 
@@ -21,10 +21,13 @@ class TNALS:
         mu: qt.TensorNetwork,
         data_stream: Inputs,
         batch_dim: str = "s",
-        not_trainable_nodes: List[str] = None,
+        not_trainable_nodes: list[str] = None,
         method="cholesky",
         device=None,
         bond_prior_alpha: float = 1.0,
+        trim_nt_nodes: bool = False,
+        trim_input: bool = False,
+        allow_empty_input: bool = False,
     ):
         """
         Tensor Network Ridge Regression (no sigma network, no ELBO, no trimming).
@@ -36,6 +39,12 @@ class TNALS:
             not_trainable_nodes: List of node tags that should not be trained.
             method: Method for covariance computation ('cholesky' or 'direct').
             device: Device to use (defaults to 'cuda' if available, else 'cpu').
+            trim_nt_nodes: Accepted for API parity with BTN; ignored here because
+                ALS performs no trimming.
+            trim_input: Accepted for API parity with BTN; ignored here because
+                ALS performs no trimming.
+            allow_empty_input: Accepted for API parity with BTN; ignored here
+                because ALS performs no trimming.
         """
         import torch
 
@@ -94,6 +103,47 @@ class TNALS:
 
         self._cache = {}
 
+    def copy(self):
+        """
+        Deep clone of this ALS model's state (mu network + tau/bond posteriors +
+        bookkeeping). Data streams are shared. Used to snapshot/restore the
+        best-epoch model. ALS has no variance network to copy.
+        """
+
+        clone = self.__class__.__new__(self.__class__)
+        clone.device = self.device
+        clone.method = self.method
+        clone.backend = self.backend
+        clone.batch_dim = self.batch_dim
+        clone.output_dimensions = self.output_dimensions
+        clone.output_dims = self.output_dimensions
+        clone.data = self.data
+        clone.train_data = self.train_data
+        clone.val_data = self.val_data
+        clone.test_data = self.test_data
+        clone._all_data_streams = list(self._all_data_streams)
+        clone.not_trainable_nodes = list(self.not_trainable_nodes)
+
+        clone.mu = self.mu.copy(deep=True)
+        clone.sigma = self.sigma.copy(deep=True) if self.sigma is not None else None
+        clone._sigma_template = self._sigma_template
+        clone.p_tau = self.p_tau.copy()
+        clone.q_tau = self.q_tau.copy()
+        clone.p_bonds = {k: v.copy() for k, v in self.p_bonds.items()}
+        clone.q_bonds = {k: v.copy() for k, v in self.q_bonds.items()}
+        clone.p_nodes = _copy.copy(self.p_nodes)
+        clone.q_nodes = _copy.copy(self.q_nodes)
+
+        clone.input_indices = list(self.input_indices)
+        clone.input_dims = clone.input_indices
+        clone.threshold = self.threshold
+        clone.delta_elbo = self.delta_elbo
+        clone.elbo_initial = self.elbo_initial
+        clone.mse = self.mse
+
+        clone._cache = {}
+        return clone
+
     def _clear_cache(self):
         """Clear all cached computations. Called after any model update."""
         self._cache = {}
@@ -138,21 +188,16 @@ class TNALS:
         return total_e_log_p
 
     def e_log_p_bond(self, bond_tag):
-        # Parameters for q (variational)
         rate_q = self.q_bonds[bond_tag].rate
         conc_q = self.q_bonds[bond_tag].concentration
 
-        # Parameters for p (prior)
         rate_p = self.p_bonds[bond_tag].rate
         conc_p = self.p_bonds[bond_tag].concentration
 
-        # E_q[lambda]
         e_lambda = conc_q / rate_q
 
-        # E_q[log lambda]
         e_log_lambda = torch.digamma(conc_q.data) - torch.log(rate_q.data)
 
-        # Expected log p
         term1 = conc_p * torch.log(rate_p.data) - torch.lgamma(conc_p.data)
         term2 = (conc_p - 1) * e_log_lambda
         term3 = -rate_p * e_lambda
@@ -262,22 +307,16 @@ class TNALS:
 
     def _compute_e_log_p_tau(self):
         """Compute E_q[log p(tau)] - expected log prior for tau under variational distribution."""
-        # Parameters for q (variational)
         rate_q = self.q_tau.rate
         conc_q = self.q_tau.concentration
 
-        # Parameters for p (prior)
         rate_p = self.p_tau.rate
         conc_p = self.p_tau.concentration
 
-        # E_q[tau]
         e_tau = conc_q / rate_q
 
-        # E_q[log tau]
         e_log_tau = torch.digamma(conc_q.data) - torch.log(rate_q.data)
 
-        # Expected log p(tau) under q(tau)
-        # log p(tau) = conc_p * log(rate_p) - log(Gamma(conc_p)) + (conc_p - 1) * log(tau) - rate_p * tau
         term1 = conc_p * torch.log(rate_p.data) - torch.lgamma(conc_p.data)
         term2 = (conc_p - 1) * e_log_tau
         term3 = -rate_p * e_tau
@@ -312,21 +351,15 @@ class TNALS:
         Returns:
             Scalar value of expected log likelihood
         """
-        # Compute MSE: E_q[(y - μx)²]
         mse = self._calc_mu_mse()
 
-        # Compute sigma forward: E_q[forward(σ)]
         sigma_forward = self._calc_sigma_forward()
 
-        # Get E[τ] (mean of q_tau)
         tau_mean = self.q_tau.mean()
 
-        # Get E_q[log τ] for Gamma distribution
-        # For Gamma(α, β): E[log X] = digamma(α) - log(β)
         concentration = self.q_tau.concentration
         rate = self.q_tau.rate
 
-        # Extract data if they're quimb tensors and convert to torch tensors
         if isinstance(concentration, qt.Tensor):
             concentration = concentration.data
         elif torch.is_tensor(concentration):
@@ -354,11 +387,6 @@ class TNALS:
 
         N = self.data.samples * output_dim_size
 
-        # Compute expected log likelihood
-        # E_q[log p(y|θ,τ)] = -0.5 * E[τ] * (MSE + sigma_forward)
-        #                    + 0.5 * N * E_q[log τ]
-        #                    - 0.5 * N * log(2π)
-
         likelihood_term1 = -0.5 * tau_mean * (mse + sigma_forward)
         likelihood_term2 = 0.5 * N * expected_log_tau
         likelihood_term3 = -0.5 * N * np.log(2 * np.pi)
@@ -372,17 +400,16 @@ class TNALS:
 
     def _copy_data(self, data):
         """Helper to copy data arrays, backend-agnostic."""
-        if hasattr(data, "clone"):  # PyTorch
+        if hasattr(data, "clone"):
             return data.clone()
-        elif hasattr(data, "copy"):  # NumPy, JAX
+        elif hasattr(data, "copy"):
             return data.copy()
         else:
-            # Fallback
             import numpy as np
 
             return np.array(data)
 
-    def _batch_forward(self, inputs: List[qt.Tensor], tn, output_inds: List[str]) -> qt.Tensor:
+    def _batch_forward(self, inputs: list[qt.Tensor], tn, output_inds: list[str]) -> qt.Tensor:
         """Helper for forward pass, contracting a single batch of inputs."""
 
         full_tn = tn & inputs
@@ -410,16 +437,15 @@ class TNALS:
         Returns:
             Result tensor with appropriate indices based on flags.
         """
-        # Determine output indices based on flags
         if sum_over_output:
             if sum_over_batch:
-                target_inds = []  # Sum over everything - scalar
+                target_inds = []
             else:
-                target_inds = [self.batch_dim]  # Keep only batch dim
+                target_inds = [self.batch_dim]
         elif sum_over_batch:
-            target_inds = self.output_dimensions  # Only keep output dims
+            target_inds = self.output_dimensions
         else:
-            target_inds = [self.batch_dim] + self.output_dimensions  # Keep both
+            target_inds = [self.batch_dim] + self.output_dimensions
 
         if sum_over_batch:
             result = self._sum_over_batches(
@@ -502,7 +528,6 @@ class TNALS:
                 continue
             final_env_inds.append(ind)
 
-        # 3. Contract
         env_tensor = env_tn.contract(output_inds=final_env_inds)
 
         return env_tensor
@@ -541,12 +566,12 @@ class TNALS:
 
     def _batch_forward_with_target(
         self,
-        inputs: List[qt.Tensor],
+        inputs: list[qt.Tensor],
         y: qt.Tensor,
         tn: qt.TensorNetwork,
         mode: str = "dot",
         sum_over_batch: bool = False,
-        output_inds: List[str] = None,
+        output_inds: list[str] = None,
     ):
         """
         Forward pass coupled with target output y.
@@ -565,38 +590,27 @@ class TNALS:
         """
         output_inds = [] if output_inds is None else output_inds
         if mode == "dot":
-            # Scalar product: add y to the network and contract
-            # y has indices (s, y1, y2, ...), forward will match these
             full_tn = tn & inputs & y
 
             if sum_over_batch:
-                # Contract everything (sum over all dims including batch)
                 result = full_tn.contract(output_inds=output_inds)
             else:
-                # Keep batch dimension
                 result = full_tn.contract(output_inds=[self.batch_dim] + output_inds)
 
             return result
 
         elif mode == "squared_error":
-            # First compute forward using quimb
             target_inds = [self.batch_dim] + self.output_dimensions
             forward_result = self._batch_forward(inputs, tn, output_inds=target_inds)
             forward_result.transpose_(*target_inds)
 
-            # Compute difference using quimb tensor subtraction
             diff = forward_result - y
 
-            # Square it using quimb tensor operations
             squared_diff = diff**2
 
-            # Now we need to sum over output dimensions
-            # Create a network with squared_diff and contract over output dims
             if sum_over_batch:
-                # Contract all dimensions (sum over batch and outputs)
                 result = squared_diff.contract(output_inds=[])
             else:
-                # Contract only output dimensions, keep batch
                 result = squared_diff.contract(output_inds=[self.batch_dim])
 
             return result
@@ -604,7 +618,7 @@ class TNALS:
         else:
             raise ValueError(f"Unknown mode: {mode}. Use 'dot' or 'squared_error'")
 
-    def _concat_batch_results(self, batch_results: List):
+    def _concat_batch_results(self, batch_results: list):
         """
         Concatenate batch results along the batch dimension.
         Uses the appropriate backend (numpy, torch, jax) for concatenation.
@@ -618,23 +632,17 @@ class TNALS:
         if len(batch_results) == 0:
             raise ValueError("No batch results to concatenate")
 
-        # Check if results are scalars
         first_result = batch_results[0]
         if not isinstance(first_result, qt.Tensor):
-            # Scalars - just sum them if needed or stack
-            # For scalars, concatenation doesn't make sense, return as is
             return batch_results
 
-        # Get the backend from the data type
         first_data = first_result.data
 
-        # Determine backend and concatenate
-        if hasattr(first_data, "__array__"):  # numpy-like
+        if hasattr(first_data, "__array__"):
             import numpy as np
 
             concat_data = np.concatenate([t.data for t in batch_results], axis=0)
         else:
-            # Try generic concatenate
             try:
                 import numpy as np
 
@@ -653,10 +661,8 @@ class TNALS:
         results = []
 
         for batch_idx, batch_data in enumerate(data_iterator):
-            # Ensure proper unpacking (handle tuple vs single item)
             inputs = batch_data if isinstance(batch_data, tuple) else (batch_data,)
 
-            # Execute operation
             batch_res = batch_operation(*inputs, *args, **kwargs)
             results.append(batch_res)
 
@@ -671,10 +677,8 @@ class TNALS:
         result = None
 
         for batch_data in data_iterator:
-            # Ensure data is a tuple for unpacking
             inputs = batch_data if isinstance(batch_data, tuple) else (batch_data,)
 
-            # Unpack inputs into the operation (e.g., mu, sigma, y)
             batch_result = batch_operation(*inputs, *args, **kwargs)
 
             result = batch_result if result is None else result + batch_result
@@ -682,16 +686,30 @@ class TNALS:
         return result
 
     def theta_block_computation(
-        self, node_tag: str, exclude_bonds: Optional[List[str]] = None
+        self, node_tag: str, exclude_bonds: list[str] | None = None
     ) -> qt.Tensor:
         """
         Compute theta^B(i) for a given node: the outer product of expected bond probabilities.
 
         From theoretical model:
-            θ^B(i) = ⊗_{b ∈ B(i)} E[λ_b]  where E[λ] = α/β
+            θ^B(i) = ⊗_{b ∈ B(i)} E[λ_b]^(1/|B(i)|)  where E[λ] = α/β
 
         This creates a tensor representing the expectation of the bond variables (precisions)
         connected to a specific node, excluding output dimensions and optionally other bonds.
+
+        Edge-count normalization (ridge consistency)
+        ---------------------------------------------
+        The regularizer added to a node's precision is the outer product (a
+        diagonal) of the per-bond precisions E[λ_b]. Without normalization this
+        product scales as λ^|B(i)|, so a node touching more edges is regularized
+        exponentially more strongly than one with fewer edges (e.g. λ^2 at the
+        chain boundary vs λ^3 in the interior of an MPO). To make the effective
+        ridge strength a consistent λ regardless of a node's degree, each bond
+        mean is raised to 1/|B(i)|, where |B(i)| is the node's *total* bond
+        degree (counting excluded bonds too, so the exponent does not depend on
+        whether a bond is temporarily excluded). Then
+            prod_{b in B(i)} E[λ_b]^(1/|B(i)|) = λ   (when all E[λ_b] = λ),
+        independent of the number of edges.
 
         Args:
             node_tag: Tag identifying the node in the tensor network
@@ -707,24 +725,25 @@ class TNALS:
             # Output dimensions = ['out'], batch_dim = 's'
             # theta = btn.theta_block_computation('node1')
             # Result has indices ['a', 'b', 'c'] with shapes [2, 3, 4]
-            # Data is outer product: E[λ_a] ⊗ E[λ_b] ⊗ E[λ_c]
+            # Data is outer product: E[λ_a]^(1/3) ⊗ E[λ_b]^(1/3) ⊗ E[λ_c]^(1/3)
         """
         exclude_bonds = exclude_bonds or []
 
-        # Get the node tensor from mu network
         node = self.mu[node_tag]
-        excluded_indices = self.output_dimensions + [self.batch_dim] + exclude_bonds
+        always_excluded = self.output_dimensions + [self.batch_dim]
 
-        # Identify bond indices: all indices except output dims, batch dim, and excluded
+        num_edges = len([ind for ind in node.inds if ind not in always_excluded])
+
+        excluded_indices = always_excluded + exclude_bonds
         bond_indices = [ind for ind in node.inds if ind not in excluded_indices]
 
         if len(bond_indices) == 0:
             return qt.Tensor(data=torch.tensor(1.0, device=self.device), inds=(), tags={node_tag})
 
-        bond_means = [self.q_bonds[bond_ind].mean() for bond_ind in bond_indices]
+        inv_deg = 1.0 / num_edges
+        bond_means = [self.q_bonds[bond_ind].mean() ** inv_deg for bond_ind in bond_indices]
         theta_tn = qt.TensorNetwork(bond_means)
 
-        # Contract to get the outer product (preserves all indices and labels)
         theta = theta_tn.contract()
         return theta
 
@@ -810,7 +829,6 @@ class TNALS:
             # Bond 'a' is shared by node1 (trainable), node2 (trainable), and input (not trainable)
             # count_trainable_nodes_on_bond('a') returns 2
         """
-        # Get tensor IDs that have this bond index using ind_map
         tids = self.mu.ind_map.get(bond_ind, set())
         trainable = [
             self.mu.tensor_map[tid]
@@ -939,10 +957,8 @@ class TNALS:
             return lib.cholesky_inverse(lib.linalg.cholesky(matrix))
 
         if backend_name == "jax":
-            # Solve LX = I for stability
             return lib.linalg.solve(matrix, lib.eye(matrix.shape[0], dtype=matrix.dtype))
 
-        # Numpy / Default Cholesky
         L = lib.linalg.cholesky(matrix)
         inv_L = lib.linalg.inv(L)
         return inv_L.T.conj() @ inv_L
@@ -1014,11 +1030,9 @@ class TNALS:
         )
 
         sample_dim = [self.batch_dim] if not sum_over_batches else []
-        # Prime indices (exclude output)
         env_prime = self._prime_indices_tensor(
             env, exclude_indices=self.output_dimensions + [self.batch_dim]
         )
-        # Outer product via tensor network (sums over shared output indices)
 
         env_inds = env.inds + env_prime.inds
         outer_tn = env & env_prime
@@ -1029,7 +1043,7 @@ class TNALS:
     def _prime_indices_tensor(
         self,
         tensor: qt.Tensor,
-        exclude_indices: Optional[List[str]] = None,
+        exclude_indices: list[str] | None = None,
         prime_suffix: str = "_prime",
     ) -> qt.Tensor:
         """
@@ -1087,7 +1101,6 @@ class TNALS:
         precision = self.q_bonds[bond_tag].mean().data
         threshold = self.threshold
 
-        # Convert precision to relevance: higher 1/precision = more relevant
         weights = 1.0 / precision
 
         sorted_indices = torch.argsort(weights, descending=True)

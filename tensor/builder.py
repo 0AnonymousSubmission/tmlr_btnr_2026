@@ -1,12 +1,13 @@
-# type: ignore
-import torch
 import random
-from tensor.distributions import GammaDistribution, MultivariateGaussianDistribution
-import numpy as np
-from typing import List, Dict, Any, Tuple, Optional
-import quimb.tensor as qt  # Assuming quimb.tensor is available
+from typing import Any
 
-torch.set_default_dtype(torch.float64)  # or torch.float64
+import numpy as np
+import quimb.tensor as qt
+import torch
+
+from tensor.distributions import GammaDistribution, MultivariateGaussianDistribution
+
+torch.set_default_dtype(torch.float64)
 
 
 class Inputs:
@@ -17,14 +18,13 @@ class Inputs:
 
     def __init__(
         self,
-        inputs: List[Any],
-        outputs: List[Any],
-        outputs_labels: List[str],
-        input_labels: List[str],
+        inputs: list[Any],
+        outputs: list[Any],
+        outputs_labels: list[str],
+        input_labels: list[str],
         batch_dim: str = "s",
         batch_size=None,
     ):
-        # 1. Configuration
         self.inputs_data = inputs
         self.outputs_data = outputs
         self.outputs_labels = outputs_labels
@@ -35,18 +35,14 @@ class Inputs:
         self.samples = outputs[0].shape[0]
         self.repeated = len(inputs) == 1
 
-        # 2. Pre-compute all batches once and store them
-        # Storage format: List[Tuple(mu_tensors, prime_tensors, y_tensor)]
         self.batches = self._create_batches()
 
-    def _create_batches(self) -> List[Tuple[List[qt.Tensor], List[qt.Tensor], qt.Tensor]]:
+    def _create_batches(self) -> list[tuple[list[qt.Tensor], list[qt.Tensor], qt.Tensor]]:
         """Generates and stores the list of all batches."""
         batches = []
 
-        # Generator for raw data slices
         raw_splits = self.batch_splits(self.inputs_data, self.outputs_data[0], self.batch_size)
 
-        # Process into tensors
         for input_dict, y_tensor in raw_splits:
             if self.repeated:
                 mu, prime = self.prepare_inputs_batch_repeated(input_dict)
@@ -56,8 +52,6 @@ class Inputs:
             batches.append((mu, prime, y_tensor))
 
         return batches
-
-    # --- Properties for Iteration ---
 
     @property
     def data_mu(self):
@@ -86,7 +80,6 @@ class Inputs:
         for mu, _, y in self.batches:
             yield mu, y
 
-    # --- Processing Methods ---
 
     def batch_splits(self, xs, y, B):
         """Generates raw dictionary/array slices."""
@@ -99,8 +92,8 @@ class Inputs:
             yield batch, tensor
 
     def prepare_inputs_batch(
-        self, input_data: Dict[str, Any]
-    ) -> Tuple[List[qt.Tensor], List[qt.Tensor]]:
+        self, input_data: dict[str, Any]
+    ) -> tuple[list[qt.Tensor], list[qt.Tensor]]:
         """
         Returns:
             tensors_mu: List of tensors for mu network [x1, x2...]
@@ -109,11 +102,9 @@ class Inputs:
         tensors_mu = []
         tensors_prime = []
         for k, v in input_data.items():
-            # Mu tensor
             tensor = qt.Tensor(data=v, inds=(self.batch_dim, k), tags={f"input_{k}"})
             tensors_mu.append(tensor)
 
-            # Sigma (prime) tensor
             prime_idx = f"{k}_prime"
             tensor_prime = qt.Tensor(
                 data=v, inds=(self.batch_dim, prime_idx), tags={f"input_{prime_idx}"}
@@ -142,8 +133,8 @@ class Inputs:
         return self.batches[idx]
 
     def prepare_inputs_batch_repeated(
-        self, input_data: Dict[str, Any]
-    ) -> Tuple[List[qt.Tensor], List[qt.Tensor]]:
+        self, input_data: dict[str, Any]
+    ) -> tuple[list[qt.Tensor], list[qt.Tensor]]:
         input_indices = self.input_labels
         single_key = list(input_data.keys())[0]
         data = input_data[single_key]
@@ -151,13 +142,11 @@ class Inputs:
         tensors_mu = []
         tensors_prime = []
         for input_idx in input_indices:
-            # Mu tensor
             tensor = qt.Tensor(
                 data=data, inds=(self.batch_dim, input_idx), tags={f"input_{input_idx}"}
             )
             tensors_mu.append(tensor)
 
-            # Sigma (prime) tensor
             prime_idx = f"{input_idx}_prime"
             tensor_prime = qt.Tensor(
                 data=data, inds=(self.batch_dim, prime_idx), tags={f"input_{prime_idx}"}
@@ -166,40 +155,90 @@ class Inputs:
 
         return tensors_mu, tensors_prime
 
-    def trim(self, label: str, keep_indices: List[int]):
+    def is_input_label(self, label: str) -> bool:
+        """True if ``label`` is one of this stream's input (feature) legs."""
+        return label in self.input_labels
+
+    def trim_input(self, label: str, keep_indices: list[int]) -> bool:
         """
-        Trim input dimension for a specific label across all batches.
-        Called by BTN when it trims an input dimension.
-        
+        Trim (feature-select) an input dimension across all stored batches.
+
+        Slices both the mu input tensors (index ``label``) and the sigma/prime
+        input tensors (index ``f"{label}_prime"``) so the data stream stays
+        consistent with a trimmed model input leg.
+
+        This is the data-side counterpart of a BTN input-bond trim: when the
+        model prunes an input leg, the corresponding feature columns must be
+        dropped from every registered data stream.
+
         Args:
-            label: Input label to trim (e.g., 'x0')
-            keep_indices: List of indices to keep
+            label: Input label to trim (e.g. 'x0').
+            keep_indices: Indices (feature columns) to keep.
+
+        Returns:
+            True if this stream carried ``label`` and was modified, else False.
         """
         prime_label = f"{label}_prime"
-        
+        modified = False
+
         for mu_tensors, prime_tensors, _ in self.batches:
             for tensor in mu_tensors:
                 if label in tensor.inds:
                     label_axis = tensor.inds.index(label)
                     slicer = [slice(None)] * tensor.data.ndim
                     slicer[label_axis] = keep_indices
-                    new_data = tensor.data[tuple(slicer)]
-                    tensor.modify(data=new_data)
-            
+                    tensor.modify(data=tensor.data[tuple(slicer)])
+                    modified = True
+
             for tensor in prime_tensors:
                 if prime_label in tensor.inds:
                     label_axis = tensor.inds.index(prime_label)
                     slicer = [slice(None)] * tensor.data.ndim
                     slicer[label_axis] = keep_indices
-                    new_data = tensor.data[tuple(slicer)]
-                    tensor.modify(data=new_data)
+                    tensor.modify(data=tensor.data[tuple(slicer)])
+                    modified = True
+
+        return modified
+
+    def trim(self, label: str, keep_indices: list[int]) -> bool:
+        return self.trim_input(label, keep_indices)
+
+    def remove_input(self, label: str) -> bool:
+        """
+        Fully DETACH an input (feature) leg from the data stream.
+
+        Drops the mu input tensor with index ``label`` and the sigma/prime input
+        tensor with index ``f"{label}_prime"`` from every stored batch, and
+        removes ``label`` from ``self.input_labels``. This is the data-side
+        counterpart of a BTN input leg trimmed to zero dimensions: the feature
+        no longer feeds the network at all.
+
+        Returns:
+            True if the label was present and removed, else False.
+        """
+        prime_label = f"{label}_prime"
+        removed = False
+
+        new_batches = []
+        for mu_tensors, prime_tensors, y in self.batches:
+            new_mu = [t for t in mu_tensors if label not in t.inds]
+            new_prime = [t for t in prime_tensors if prime_label not in t.inds]
+            if len(new_mu) != len(mu_tensors) or len(new_prime) != len(prime_tensors):
+                removed = True
+            new_batches.append((new_mu, new_prime, y))
+        self.batches = new_batches
+
+        if label in self.input_labels:
+            self.input_labels = [l for l in self.input_labels if l != label]
+            removed = True
+
+        return removed
 
     def __str__(self):
         """Summary of the loader structure."""
         if not self.batches:
             return ">>> InputLoader (Empty)"
 
-        # Peek at the first stored batch
         mu, prime, y = self.batches[0]
 
         mu_inds = [list(t.inds) for t in mu]
@@ -212,10 +251,9 @@ class Inputs:
             f"{'-' * 60}\n"
         )
 
-        row_y = f"{'Target':<8} | {str(y.shape):<15} | {y.inds}\n"
-        row_mu = f"{'Mu':<8} | {str(mu[0].shape):<15} | {mu_inds} ... ({len(mu)} tensors)\n"
-        # Note: Sigma output is Mu + Prime, but we store them separate.
-        row_sig = f"{'Sigma':<8} | {str(prime[0].shape):<15} | Mu + {prime_inds} ... (+{len(prime)} tensors)"
+        row_y = f"{'Target':<8} | {y.shape!s:<15} | {y.inds}\n"
+        row_mu = f"{'Mu':<8} | {mu[0].shape!s:<15} | {mu_inds} ... ({len(mu)} tensors)\n"
+        row_sig = f"{'Sigma':<8} | {prime[0].shape!s:<15} | Mu + {prime_inds} ... (+{len(prime)} tensors)"
 
         return header + row_y + row_mu + row_sig
 
@@ -228,7 +266,7 @@ class BTNBuilder:
     def __init__(
         self,
         mu: qt.TensorNetwork,
-        output_dimensions: List[str],
+        output_dimensions: list[str],
         batch_dim: str = "s",
         device=None,
         bond_prior_alpha: float = 1.0,
@@ -240,22 +278,22 @@ class BTNBuilder:
         self.device = device if device is not None else torch.device("cpu")
         self.bond_prior_alpha = bond_prior_alpha
 
-        self.p_bonds: Dict[str, GammaDistribution] = {}
-        self.p_nodes: Dict[str, MultivariateGaussianDistribution] = {}
+        self.p_bonds: dict[str, GammaDistribution] = {}
+        self.p_nodes: dict[str, MultivariateGaussianDistribution] = {}
 
-        self.q_bonds: Dict[str, GammaDistribution] = {}
-        self.q_nodes: Dict[str, MultivariateGaussianDistribution] = {}
+        self.q_bonds: dict[str, GammaDistribution] = {}
+        self.q_nodes: dict[str, MultivariateGaussianDistribution] = {}
 
-        self.sigma_tn: Optional[qt.TensorNetwork] = None
+        self.sigma_tn: qt.TensorNetwork | None = None
 
-    def build_model(self) -> Tuple[Dict, Dict, Dict, Dict, qt.TensorNetwork]:
+    def build_model(self) -> tuple[dict, dict, dict, dict, qt.TensorNetwork]:
         all_inds = self.mu.ind_map
         self._build_edge_distributions(all_inds)
         self.sigma_tn = self._construct_sigma_topology()
         self._build_node_distributions()
         return self.p_bonds, self.p_nodes, self.q_bonds, self.q_nodes, self.sigma_tn
 
-    def _build_edge_distributions(self, all_inds_map: Dict[str, Any]):
+    def _build_edge_distributions(self, all_inds_map: dict[str, Any]):
         """
         Constructs Gamma distributions with quimb.Tensor parameters.
         Tags: {ind}_alpha and {ind}_beta.
@@ -266,7 +304,6 @@ class BTNBuilder:
         """
 
         for ind, tids in all_inds_map.items():
-            # Skip only batch dimension, NOT output dimensions anymore
             if ind == self.batch_dim:
                 continue
 
@@ -331,38 +368,24 @@ class BTNBuilder:
 
             shape_map = dict(zip(tensor.inds, tensor.shape))
 
-            # 1. Calculate dimensions for non-output and output parts
             non_out_dims = [shape_map[ix] for ix in non_output_inds]
             out_dims = [shape_map[ix] for ix in output_inds]
 
-            # 2. Total flattened size of non-output dimensions
-            #    (e.g., if indices are 'a', 'b' with sizes 2, 3 -> d_non_out = 6)
             d_non_out = int(np.prod(non_out_dims))
 
-            # 3. Create Identity Matrix for the non-output part
             eye_matrix = torch.eye(d_non_out, dtype=torch.float64, device=self.device)
 
-            # 4. Reshape Identity back to tensor structure
-            #    (d_non_out, d_non_out) -> (dim_a, dim_b, ..., dim_a_prime, dim_b_prime, ...)
-            #    Note: This assumes the order in sigma_inds matches [non_outputs, non_outputs_prime, outputs]
             eye_tensor = eye_matrix.reshape(non_out_dims + non_out_dims)
 
-            # 5. Handle Output Dimensions (Broadcasting)
-            #    The covariance structure is usually repeated/shared across output dimensions for isotropic initialization
             if out_dims:
-                # Expand dims for outputs
                 for _ in out_dims:
                     eye_tensor = eye_tensor.unsqueeze(-1)
 
-                # Expand values (broadcast)
                 final_shape = non_out_dims + non_out_dims + out_dims
                 sigma_data = eye_tensor.expand(final_shape).clone()
             else:
                 sigma_data = eye_tensor.clone()
 
-            # 6. Scaling
-            #    Scale to be small enough
-            # Just for testing
             shape_len = len(sigma_data.shape)
             if len(sigma_data.shape) == 4:
                 shape_len = 6

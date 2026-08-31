@@ -1,14 +1,13 @@
-# type: ignore
 import time
-import torch
+
 import numpy as np
-from typing import Dict
+import torch
 from omegaconf import DictConfig
 
-from utils.dataset_loader import append_bias
-from core.models import create_baseline_model
 from core.metrics import safe_float
+from core.models import create_baseline_model
 from core.uncertainty import compute_uncertainty_metrics
+from utils.dataset_loader import append_bias
 
 
 def generate_baseline_run_id(cfg: DictConfig, seed: int, fold: int = None) -> str:
@@ -20,7 +19,7 @@ def generate_baseline_run_id(cfg: DictConfig, seed: int, fold: int = None) -> st
 
 def run_baseline_experiment(
     cfg: DictConfig,
-    data: Dict,
+    data: dict,
     seed: int,
     verbose: bool = False,
     tracker=None,

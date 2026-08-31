@@ -1,13 +1,15 @@
 \begin{table}[t]
 \centering
-\caption{Test negative log-likelihood (NLL) (lower is better), mean \(\pm\) std. Best per dataset in bold.}
+\caption{Test negative log-likelihood (NLL) (\Eqref{eq:nll}) (lower is better), mean \(\pm\) std. Best per dataset in bold.
+The table shows that BTNR attains competitive likelihoods across all ten tasks and remains stable even where some baselines diverge to large values
+}%
 \label{tab:nll}
 \resizebox{\textwidth}{!}{%
 \begin{tabular}{lcccccccccc}
 \toprule
 Model & AB & AI & AP & BK & CO & EE & OB & RS & SB & SP \\
 \midrule
-\shortstack[l]{BTNR \\ {}} & \shortstack{2.13 \\ $\pm$ 0.01} & \shortstack{-0.63 \\ $\pm$ 0.01} & \shortstack{5.91 \\ $\pm$ 0.01} & \shortstack{6.03 \\ $\pm$ 0.00} & \shortstack{3.30 \\ $\pm$ 0.08} & \shortstack{0.85 \\ $\pm$ 0.07} & \shortstack{3.20 \\ $\pm$ 0.70} & \shortstack{3.20 \\ $\pm$ 0.01} & \shortstack{11.78 \\ $\pm$ 0.18} & \shortstack{2.64 \\ $\pm$ 0.02} \\
+\shortstack[l]{BTNR \\ {}} & \shortstack{2.15 \\ $\pm$ 0.01} & \shortstack{-0.65 \\ $\pm$ 0.00} & \shortstack{5.75 \\ $\pm$ 0.01} & \shortstack{6.05 \\ $\pm$ 0.00} & \shortstack{3.35 \\ $\pm$ 0.08} & \shortstack{0.82 \\ $\pm$ 0.04} & \shortstack{1.41 \\ $\pm$ 0.04} & \shortstack{3.19 \\ $\pm$ 0.03} & \shortstack{9.65 \\ $\pm$ 0.41} & \shortstack{2.48 \\ $\pm$ 0.00} \\
 \midrule\midrule
 \shortstack[l]{GP \\ {}} & \shortstack{2.43 \\ $\pm$ 0.01} & \shortstack{-0.67 \\ $\pm$ 0.00} & \shortstack{359.08 \\ $\pm$ 7.04} & \shortstack{244.53 \\ $\pm$ 3.37} & \shortstack{7.54 \\ $\pm$ 0.00} & \shortstack{2.24 \\ $\pm$ 0.00} & \shortstack{1.25 \\ $\pm$ 0.01} & \shortstack{9.04 \\ $\pm$ 0.00} & \shortstack{22967.24 \\ $\pm$ 330.04} & \shortstack{3.00 \\ $\pm$ 0.00} \\
 \midrule

@@ -1,8 +1,8 @@
 import random
-from typing import List, Dict, Any, Tuple, Union
-import quimb.tensor as qt 
-import torch
-import numpy as np
+from typing import Any
+
+import quimb.tensor as qt
+
 
 class Inputs:
     """
@@ -12,10 +12,10 @@ class Inputs:
     1. Tuple/String: ("p", "x") -> Auto-maps to input[i] (or input[0] if single input).
     2. List (Explicit): [source_idx, ("p", "x")] -> Uses inputs[source_idx].
     """
-    def __init__(self, inputs: List[Any], 
-                 outputs: List[Any], 
-                 outputs_labels: List[str],
-                 input_labels: List[Union[str, Tuple[str, ...], List[Any]]], 
+    def __init__(self, inputs: list[Any], 
+                 outputs: list[Any], 
+                 outputs_labels: list[str],
+                 input_labels: list[str | tuple[str, ...] | list[Any]], 
                  batch_dim: str = "s",
                  batch_size = None):
 
@@ -32,7 +32,7 @@ class Inputs:
         # 2. Pre-compute batches
         self.batches = self._create_batches()
 
-    def _create_batches(self) -> List[Tuple[List[qt.Tensor], qt.Tensor]]:
+    def _create_batches(self) -> list[tuple[list[qt.Tensor], qt.Tensor]]:
         batches = []
         
         # Generator for raw data slices
@@ -100,7 +100,7 @@ class Inputs:
             
             yield batch, tensor
 
-    def _prepare_batch(self, input_data: Dict[int, Any]) -> List[qt.Tensor]:
+    def _prepare_batch(self, input_data: dict[int, Any]) -> list[qt.Tensor]:
         """
         Constructs the list of QT tensors for the network based on input_labels definitions.
         """
@@ -165,7 +165,7 @@ class Inputs:
             f"{'-'*60}\n"
         )
         
-        row_y = f"{'Target':<8} | {str(y.shape):<15} | {y.inds}\n"
-        row_mu = f"{'Mu':<8} | {str(mu[0].shape):<15} | {mu_inds}\n"
+        row_y = f"{'Target':<8} | {y.shape!s:<15} | {y.inds}\n"
+        row_mu = f"{'Mu':<8} | {mu[0].shape!s:<15} | {mu_inds}\n"
         
         return header + row_y + row_mu

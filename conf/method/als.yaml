@@ -4,7 +4,7 @@ defaults:
 
 method:
   name: ALS
-  decay: 0.25
+  decay: 1.0
 
 dataset:
   added_bias: true

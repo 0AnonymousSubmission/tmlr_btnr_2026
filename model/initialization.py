@@ -1,4 +1,3 @@
-# type: ignore
 """
 Proper initialization strategies for tensor networks.
 
@@ -8,10 +7,10 @@ All normalization functions:
 - Return the scale factor(s) applied
 """
 
-import torch
+
 import numpy as np
 import quimb.tensor as qt
-from typing import Union, List
+import torch
 
 
 def normalize_tn_output(
@@ -249,7 +248,7 @@ def init_mps_normalized(
     Returns:
         Initialized and normalized tensor network
     """
-    from model.MPO2_models import MPO2
+    from model.models import MPO2
 
     model = MPO2(
         L=L,
@@ -296,7 +295,7 @@ def init_mps_orthogonal(
     Returns:
         Initialized MPO2 model with orthogonal structure
     """
-    from model.MPO2_models import MPO2
+    from model.models import MPO2
 
     if output_site is None:
         output_site = L // 2
