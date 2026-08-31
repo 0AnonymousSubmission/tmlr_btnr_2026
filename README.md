@@ -1,4 +1,4 @@
-# BMPO - Bayesian Tensor Network Experiments
+# BTNR - Bayesian Tensor Network for Regression
 
 A framework for running Bayesian Tensor Network for Regression (BTNR) experiments and baselines using Hydra configuration management.
 
@@ -203,7 +203,7 @@ python run.py --multirun \
 ## Project Structure
 
 ```
-BMPO/
+src/
 ├── run.py                 # Main entry point
 ├── conf/                  # Hydra configuration
 │   ├── config.yaml        # Default configuration
